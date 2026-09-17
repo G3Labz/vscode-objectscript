@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/G3Labz/vscode-objectscript/master/schemas/iriscache.schema.json",
+  "title": "IrisCacheSchema",
+  "description": "Cache and state persistence manifest for iris-sync compilation, semantic hashes, and server discovery",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URI or URL referencing this JSON schema definition"
+    },
+    "version": {
+      "type": "integer",
+      "default": 1,
+      "description": "Schema version of the cache file format"
+    }
+  },
+  "additionalProperties": {
+    "type": ["string", "number", "boolean", "object", "array", "null"],
+    "description": "Cached document mtimes, semantic hashes, Atelier API versions, server capabilities, or memento state keys"
+  }
+}

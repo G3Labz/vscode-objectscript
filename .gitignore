@@ -8,3 +8,7 @@ dist/
 vscode*.d.ts
 test-fixtures
 .DS_Store
+.iris-sync-cache.json
+.iris-sync/cache.json
+.iris-sync/*.local.json
+.tmp*

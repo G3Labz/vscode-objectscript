@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/G3Labz/vscode-objectscript/master/schemas/irisproject.schema.json",
+  "title": "IrisProjectSchema",
+  "description": "Local-first Studio Project manifest for iris-sync, providing InterSystems Studio (.PRJ / %Studio.Project) parity for tracked file sets and deployment packaging",
+  "type": "object",
+  "required": [
+    "name",
+    "items"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URI or URL referencing this JSON schema definition"
+    },
+    "version": {
+      "type": "integer",
+      "default": 1,
+      "description": "Schema version of the project manifest"
+    },
+    "name": {
+      "type": "string",
+      "description": "Unique identifier of the project (e.g. 'BillingService')",
+      "pattern": "^[a-zA-Z0-9_-]+$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of this project manifest and its purpose"
+    },
+    "serverProject": {
+      "type": "string",
+      "description": "Corresponding InterSystems IRIS server project document name (e.g. 'BillingService.PRJ')",
+      "pattern": "^[a-zA-Z0-9_\\-\\.]+\\.(PRJ|prj)$"
+    },
+    "targetNamespace": {
+      "type": "string",
+      "description": "Target IRIS database namespace for project synchronization and deployment"
+    },
+    "exportFormat": {
+      "type": "string",
+      "enum": [
+        "xml",
+        "udl",
+        "gof"
+      ],
+      "default": "xml",
+      "description": "Format for project promotion packages (XML, UDL, or Global Output Format)"
+    },
+    "items": {
+      "type": "array",
+      "description": "Ordered collection of workspace-relative file paths tracked by this project manifest",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "dependencies": {
+      "type": "array",
+      "description": "List of prerequisite projects that must be deployed or compiled prior to this project",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/G3Labz/vscode-objectscript/master/schemas/irisservers.schema.json",
+  "title": "IrisServersSchema",
+  "description": "Server definition catalog for InterSystems IRIS connections, conforming to IServerSpec",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "default": 1
+    },
+    "servers": {
+      "type": "object",
+      "description": "Dictionary of server definitions indexed by server identifier",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "webServer"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Human-readable label or description of the server instance"
+          },
+          "username": {
+            "type": "string",
+            "description": "Default authentication username (supports environment expansion e.g., ${IRIS_USERNAME})"
+          },
+          "webServer": {
+            "type": "object",
+            "description": "Web Gateway endpoint specifications",
+            "required": [
+              "host",
+              "port"
+            ],
+            "properties": {
+              "scheme": {
+                "type": "string",
+                "enum": [
+                  "http",
+                  "https"
+                ],
+                "default": "http"
+              },
+              "host": {
+                "type": "string",
+                "description": "Hostname or IP address of the IRIS web server"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535,
+                "default": 57772
+              },
+              "pathPrefix": {
+                "type": "string",
+                "pattern": "^(/[^/]+)*$",
+                "description": "Optional virtual directory prefix (e.g. /csp/sys or /iris)"
+              }
+            },
+            "additionalProperties": false
+          },
+          "superServer": {
+            "type": "object",
+            "description": "Optional SuperServer TCP endpoint",
+            "properties": {
+              "host": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 65535,
+                "default": 1972
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "servers"
+  ],
+  "additionalProperties": false
+}

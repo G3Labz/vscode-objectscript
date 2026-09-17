@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/G3Labz/vscode-objectscript/master/schemas/irisrc.schema.json",
+  "title": "IrisRcSchema",
+  "description": "Runtime workspace and profile configuration for iris-sync",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "activeProfile": {
+      "type": "string",
+      "default": "development",
+      "description": "Key of the active profile within the profiles dictionary"
+    },
+    "profiles": {
+      "type": "object",
+      "description": "Dictionary of named synchronization and compilation profiles",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "server",
+          "namespace"
+        ],
+        "properties": {
+          "server": {
+            "type": "string",
+            "description": "Target server key defined in .iris-sync/servers.json or intersystems.servers"
+          },
+          "namespace": {
+            "type": "string",
+            "default": "USER",
+            "description": "Target IRIS database namespace"
+          },
+          "compileFlags": {
+            "type": "string",
+            "default": "cuk",
+            "description": "Compilation flags passed to Atelier REST API (e.g. cuk, cukd)"
+          },
+          "sourceRoot": {
+            "type": "string",
+            "default": "src",
+            "description": "Local workspace root directory containing ObjectScript files"
+          },
+          "watchPatterns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [
+              "src/**/*.cls",
+              "src/**/*.mac",
+              "src/**/*.inc"
+            ],
+            "description": "Glob patterns for files monitored by the background watcher"
+          },
+          "conflictPolicy": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "overwrite",
+              "pull",
+              "diff",
+              "merge",
+              "interactive"
+            ],
+            "default": "fail",
+            "description": "Concurrency resolution behavior when the server version has diverged (HTTP 409)"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "activeProfile",
+    "profiles"
+  ],
+  "additionalProperties": false
+}
