@@ -30,6 +30,7 @@ import {
 } from "./vscode-shim";
 import * as ext from "../extension";
 import { logger } from "./terminalLogger";
+import { getIrisSyncVersions } from "./version";
 
 // ---------------------------------------------------------------------------
 // Bootstrap Runtime Shim & Upstream Extension Context
@@ -237,10 +238,12 @@ async function syncAndCompileFile(
 
 const program = new Command();
 
+const { compositeVersion } = getIrisSyncVersions();
+
 program
   .name("iris-sync")
   .description("InterSystems IRIS Headless Synchronization & Compilation Tool")
-  .version("3.8.6")
+  .version(compositeVersion)
   .option("-p, --profile <profile>", "Runtime profile from .irisrc.json")
   .option("-s, --server <server>", "Target IRIS server identifier")
   .option("-n, --namespace <ns>", "Target IRIS namespace (e.g., USER)")
@@ -1129,6 +1132,15 @@ program
   .command("dev [subaction]")
   .description("Developer utilities for upstream repository synchronization and contract audit")
   .action(async (subaction?: string) => {
+    if (subaction === "version") {
+      const v = getIrisSyncVersions();
+      console.log(`iris-sync CLI version: ${v.cliVersion}`);
+      console.log(`Upstream extension:    ${v.extensionVersion}`);
+      console.log(`Composite identifier:  ${v.compositeVersion}`);
+      console.log(`Binary artifact:       ${v.binaryFilename}`);
+      console.log(`Release git tag:       ${v.releaseTag}`);
+      return;
+    }
     if (subaction === "sync-upstream" || !subaction) {
       logger.info("[DEV] Checking upstream synchronization and contract parity...");
       const { execSync } = require("child_process");

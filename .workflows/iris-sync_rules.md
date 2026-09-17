@@ -44,7 +44,7 @@ All automated coding agents, continuous integration (CI) workflows, and human co
 - **Statement**: Both extension and CLI build targets must compile cleanly without errors or circular dependency loops.
 - **Verification Commands**:
   ```bash
-  npm run build:cli        # Compiles bin/iris-sync.js via esbuild
+  npm run build:cli        # Compiles dist/cli/iris-sync-b.<ext>-c.<cli>.js and dist/cli/iris-sync.js via esbuild
   npm run build:extension  # Compiles dist/extension.js via webpack
   ```
 - **Tree-Shaking Rule**:
@@ -198,7 +198,7 @@ flowchart TD
    ```bash
    npm run build:cli
    npm run build:extension
-   ./bin/iris-sync.js --help
+   ./dist/cli/iris-sync.js --help
    ```
 
 ---

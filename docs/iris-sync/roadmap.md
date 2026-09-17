@@ -74,7 +74,7 @@ flowchart LR
 - **Virtual Runtime Shim (`src/headless/vscode-shim.ts`)**: Implemented complete headless compatibility layer supporting `Uri` (`vscode-uri`), `workspace` (`getConfiguration`, `fs`, `asRelativePath`, `workspaceFolders`), `window` (`createOutputChannel`, `showErrorMessage`, `withProgress`), `workspaceState` / `HeadlessMemento`, `commands`, and `EventEmitter`.
 - **Non-Destructive JSONC Bridge (`src/headless/configBridge.ts`)**: Built `stripJsonc`, `parseJsoncSafe`, and `setSettingPreservingJsonc` ensuring developer comments and trailing commas in `.vscode/settings.json` are preserved during configuration synchronization.
 - **Document Resolution Hardening**: Hardened `CLASS_REGEX` supporting `%` system classes, unicode letters, package dots, and underscores (`_`). Implemented category folder stripping (`cls/`, `mac/`, `inc/`, `routines/`, `rtn/`).
-- **Standalone Binary Generation**: Authored `build/esbuild.cli.ts`, compiling self-contained executable binary [`bin/iris-sync.js`](../../bin/iris-sync.js) (1.9 MB).
+- **Standalone Binary Generation**: Authored `build/esbuild.cli.ts`, compiling self-contained executable binary into `dist/cli/iris-sync-b.<ext>-c.<cli>.js` (and canonical alias `dist/cli/iris-sync.js`).
 - **Test Suite**: Developed 32 unit and integration tests across 9 suites in [`test/shim.test.ts`](../../test/shim.test.ts), including static AST scanning across 64 upstream files and 148 symbols (100% coverage).
 - **Live Sandbox Verification**: Verified connection, ping, diff, single-file compilation, and batch build against an active InterSystems IRIS 2026.2 container running in `IrisSandbox`.
 - **Agent Specification & Rules**: Authored [`../../.agents/iris-sync_dev.md`](../../.agents/iris-sync_dev.md) and [`../../.workflows/iris-sync_rules.md`](../../.workflows/iris-sync_rules.md).
@@ -98,6 +98,33 @@ flowchart LR
 | **VS Code Importer** | `iris-sync setup --from-vscode`| **Production Ready** | Reads `intersystems.servers` and `objectscript.conn` from `.vscode/settings.json`. |
 | **Bidirectional Sync** | `iris-sync config sync` | **Production Ready** | Reconciles server entries between `.iris-sync/servers.json` and `.vscode/settings.json`. |
 | **AST Parity Scanner** | `iris-sync dev sync-upstream`| **Production Ready** | Scans 64 upstream files and asserts 100% shim coverage for all `vscode.*` symbols. |
+| **Version Matrix**     | `iris-sync dev version`      | **Production Ready** | Inspects dual-version matrix (extension base `b`, CLI build `c`, composite tag, artifact filename). |
+
+### 3.1 Dual-Versioning & Release Architecture (`b.<extVersion>-c.<cliVersion>`)
+
+Because `iris-sync` is delivered as a fork and standalone compiler layer over the upstream `vscode-objectscript` extension, it must track two distinct evolutionary lifecycles:
+
+```
+                      Composite Version Identifier
+                ┌──────────────────────────────────────┐
+                │   b.3.8.6-SNAPSHOT-c.0.0.1-ALPHA     │
+                └──────────────────┬───────────────────┘
+                                   │
+              ┌────────────────────┴────────────────────┐
+              ▼                                         ▼
+   Upstream Extension Build               Standalone CLI Build
+   - package.json: version                - package.json: cliVersion
+   - Tracks InterSystems core             - Tracks iris-sync tooling,
+     (Atelier client, compiler,             watcher, daemon, schemas,
+     language features)                     project parity & CI/CD
+   - Prefix: b.<version>                  - Prefix: c.<version>
+```
+
+1. **Upstream Extension Version (`b`)**: Follows `package.json:version` (e.g., `3.8.6-SNAPSHOT`). When upstream bumps, `iris-sync` automatically tracks the new base.
+2. **CLI Engine Version (`c`)**: Follows `package.json:cliVersion` (e.g., `0.0.1-ALPHA`, `0.1.0-BETA`, `1.0.0`), supporting independent semver progression with stability qualifiers (`ALPHA`, `BETA`, `SNAPSHOT`, `RC`).
+3. **Release Tag Format**: `b.<extVersion>-c.<cliVersion>` (e.g., `b.3.8.6-SNAPSHOT-c.0.0.1-ALPHA`).
+4. **Binary Location**: Compiled directly into `./dist/cli/iris-sync-b.<extVersion>-c.<cliVersion>.js` (replacing legacy `./bin/`), alongside a canonical convenience alias `./dist/cli/iris-sync.js`.
+5. **Future Automated CI/CD Trigger**: GitHub Actions watches for upstream release tags; upon an upstream bump, it automatically packages, tags, and publishes the dual-versioned standalone binaries.
 
 ---
 

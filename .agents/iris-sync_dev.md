@@ -62,7 +62,7 @@ The repository maintains two independent compilation targets defined in [`packag
 1. **Extension Target (`npm run build:extension`)**:
    Runs Webpack to generate the standard `.vsix` extension bundle for interactive IDEs ([`dist/extension.js`](../dist/extension.js)).
 2. **Headless CLI Target (`npm run build:cli`)**:
-   Executes [`build/esbuild.cli.ts`](../build/esbuild.cli.ts) via `tsx` to compile the single-file Node.js binary [`bin/iris-sync.js`](../bin/iris-sync.js).
+   Executes [`build/esbuild.cli.ts`](../build/esbuild.cli.ts) via `tsx` to compile the standalone Node.js binary into `dist/cli/` with dual-version naming (`dist/cli/iris-sync-b.<ext>-c.<cli>.js`) and canonical alias [`dist/cli/iris-sync.js`](../dist/cli/iris-sync.js).
 
 ### 3.2 Module Aliasing & Tree-Shaking Rules
 In [`build/esbuild.cli.ts`](../build/esbuild.cli.ts):
@@ -240,7 +240,8 @@ npm run test:shim
 npm run build:cli
 
 # 6. Run end-to-end sanity tests
-./bin/iris-sync.js --help
+./dist/cli/iris-sync.js --help
+./dist/cli/iris-sync.js dev version
 ```
 
 ---
@@ -254,14 +255,15 @@ npm run watch:cli                 # Watch mode for CLI development
 npm run build:extension           # Compile standard VS Code extension
 npm run test:shim                 # Run AST parity and shim verification tests
 
-# Execution & Runtime
-./bin/iris-sync.js watch          # Start background watcher daemon
-./bin/iris-sync.js watch --coexist # Watcher with coexistence mode configured
-./bin/iris-sync.js compile <file> # Synchronize and compile single file
-./bin/iris-sync.js pull <file>    # Pull remote document from IRIS to disk
-./bin/iris-sync.js diff <file>    # Unified diff between local and remote
-./bin/iris-sync.js build --all    # Batch compile entire workspace
-./bin/iris-sync.js git-sync       # Atomic Git synchronization & purge
-./bin/iris-sync.js setup --git-hooks # Install post-checkout & post-merge hooks
-./bin/iris-sync.js ping           # Connection & namespace healthcheck
+# Execution & Runtime (dist/cli/iris-sync.js or versioned artifact)
+./dist/cli/iris-sync.js watch          # Start background watcher daemon
+./dist/cli/iris-sync.js watch --coexist # Watcher with coexistence mode configured
+./dist/cli/iris-sync.js compile <file> # Synchronize and compile single file
+./dist/cli/iris-sync.js pull <file>    # Pull remote document from IRIS to disk
+./dist/cli/iris-sync.js diff <file>    # Unified diff between local and remote
+./dist/cli/iris-sync.js build --all    # Batch compile entire workspace
+./dist/cli/iris-sync.js git-sync       # Atomic Git synchronization & purge
+./dist/cli/iris-sync.js setup --git-hooks # Install post-checkout & post-merge hooks
+./dist/cli/iris-sync.js ping           # Connection & namespace healthcheck
+./dist/cli/iris-sync.js dev version    # Output dual-version breakdown
 ```

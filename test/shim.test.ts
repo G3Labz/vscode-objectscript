@@ -445,8 +445,12 @@ async function runTests() {
   // -------------------------------------------------------------------------
   console.log("\nSuite 8: Document Name Resolution & Header Authority");
 
+  const { getIrisSyncVersions } = require("../src/headless/version");
+  const { binaryFilename, compositeVersion } = getIrisSyncVersions();
+  const binPath = path.resolve(__dirname, `../dist/cli/${binaryFilename}`);
+
   await it("Resolves standard class name, single-segment class, underscores, and category routines correctly", () => {
-    const { resolveDocName } = require("../bin/iris-sync.js");
+    const { resolveDocName } = require(binPath);
     const tmpDir = path.resolve("/tmp/iris-docname-test");
     fs.mkdirSync(tmpDir, { recursive: true });
     try {
@@ -490,8 +494,12 @@ async function runTests() {
   // -------------------------------------------------------------------------
   console.log("\nSuite 9: CLI Commands End-to-End Verification");
 
+  await it("iris-sync -V outputs composite dual-version identifier", () => {
+    const out = execSync(`node "${binPath}" -V`, { encoding: "utf8" });
+    assert.strictEqual(out.trim(), compositeVersion);
+  });
+
   await it("iris-sync --help lists all required commands including git-sync and setup", () => {
-    const binPath = path.resolve(__dirname, "../bin/iris-sync.js");
     const out = execSync(`node "${binPath}" --help`, { encoding: "utf8" });
     assert.ok(out.includes("git-sync"));
     assert.ok(out.includes("setup"));
@@ -504,7 +512,6 @@ async function runTests() {
   });
 
   await it("iris-sync setup --help lists --from-registry and --git-hooks options", () => {
-    const binPath = path.resolve(__dirname, "../bin/iris-sync.js");
     const out = execSync(`node "${binPath}" setup --help`, { encoding: "utf8" });
     assert.ok(out.includes("--from-registry"));
     assert.ok(out.includes("--from-vscode"));
@@ -512,7 +519,6 @@ async function runTests() {
   });
 
   await it("iris-sync git-sync executes cleanly on HEAD", () => {
-    const binPath = path.resolve(__dirname, "../bin/iris-sync.js");
     const out = execSync(`node "${binPath}" git-sync --from HEAD --to HEAD --quiet`, {
       cwd: path.resolve(__dirname, ".."),
       encoding: "utf8",

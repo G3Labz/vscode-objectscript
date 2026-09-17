@@ -430,13 +430,13 @@ flowchart LR
 The build pipeline leverages `esbuild` for the headless CLI target and Webpack for the editor extension target:
 
 - **Target A (`build:extension`)**: Executes `webpack --mode production` to assemble the standard `.vsix` extension package.
-- **Target B (`build:cli`)**: Executes `esbuild src/headless/cli.ts --bundle --platform=node --target=node18 --alias:vscode=./src/headless/vscode-shim.ts --outfile=bin/iris-sync.js --minify`.
+- **Target B (`build:cli`)**: Executes [`build/esbuild.cli.ts`](../../build/esbuild.cli.ts) via `tsx` to compile the standalone CLI binary into `dist/cli/iris-sync-b.<ext>-c.<cli>.js` with canonical entrypoint `dist/cli/iris-sync.js`.
 - **Tree-Shaking Elimination**: `esbuild` performs aggressive dead-code elimination. Because `src/headless/cli.ts` only imports `AtelierAPI`, `compile.ts`, and `documentIndex.ts`, the bundler automatically strips out:
   - TextMate grammars and syntax tokenizers (`syntaxes/`, `language-configuration.json`).
   - Webview panels (`documaticPreviewPanel.ts`, `restDebugPanel.ts`, `showPlanPanel.ts`, `LowCodeEditorProvider.ts`).
   - Interactive tree-view providers (`explorer.ts`, `projectsExplorer.ts`).
   - Debugger adapters (`debugConfProvider.ts`).
-- **Result**: A compact, single-file Node.js binary (`bin/iris-sync.js`) that starts instantaneously and consumes minimal memory.
+- **Result**: A compact, single-file Node.js binary (`dist/cli/iris-sync-b.<ext>-c.<cli>.js`) that starts instantaneously and consumes minimal memory.
 
 ---
 
@@ -770,7 +770,7 @@ graph TD
         ShimLayer["Virtual Runtime Shim<br/>(src/headless/vscode-shim.ts)"]
         HeadlessCLI["Headless CLI Layer<br/>(src/headless/cli.ts)"]
         DualBuild["Dual-Target Build (esbuild)<br/>(Tree-shaking: Stubs UI/Webviews)"]
-        CLIBinary["Standalone CLI Binary<br/>(bin/iris-sync.js)"]
+        CLIBinary["Standalone CLI Binary<br/>(dist/cli/iris-sync-b.&lt;ext&gt;-c.&lt;cli&gt;.js)"]
 
         UpstreamCore -->|import from 'vscode'| ShimLayer
         HeadlessCLI --> UpstreamCore
@@ -1080,7 +1080,7 @@ async function runBuild() {
     bundle: true,
     platform: "node",
     target: "node18",
-    outfile: "bin/iris-sync.js",
+    outfile: `dist/cli/iris-sync-${compositeVersion}.js`,
     banner: { js: "#!/usr/bin/env node\n" },
     alias: {
       // Direct all 52 upstream "vscode" imports to our Virtual Runtime Shim
@@ -1091,7 +1091,7 @@ async function runBuild() {
     treeShaking: true,
     sourcemap: true,
   });
-  console.log("Successfully compiled standalone CLI binary: bin/iris-sync.js");
+  console.log(`Successfully compiled standalone CLI binary: dist/cli/iris-sync-${compositeVersion}.js`);
 }
 
 runBuild().catch((err) => {
