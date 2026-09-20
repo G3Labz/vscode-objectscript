@@ -12,7 +12,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";
 import * as vscodeShim from "../src/headless/vscode-shim";
-import { stripJsonc, parseJsoncSafe, readJsonSafe, setSettingPreservingJsonc } from "../src/headless/configBridge";
+import { stripJsonc, parseJsoncSafe, readJsonSafe, setSettingPreservingJsonc, resolveConfigForFile, resolveConfiguration } from "../src/headless/configBridge";
 
 const {
   Uri,
@@ -636,6 +636,42 @@ async function runTests() {
 
     const buildHelp = execSync(`node "${binPath}" build --help`, { encoding: "utf8" });
     assert.ok(buildHelp.includes("--stream"));
+  });
+
+  await it("Multi-Namespace mappings: resolveConfigForFile routes file paths to mapped namespaces (M2.3)", () => {
+    const baseConfig = resolveConfiguration();
+    const configWithMappings = {
+      ...baseConfig,
+      namespace: "USER",
+      mappings: [
+        { dir: "src/billing", namespace: "BILLING" },
+        { dir: "src/core", namespace: "CORE", server: "prod-iris" },
+      ],
+      servers: {
+        ...baseConfig.servers,
+        "prod-iris": {
+          webServer: { scheme: "https" as const, host: "prod.local", port: 52773 },
+          username: "SUPER",
+          password: "SECRET",
+        },
+      },
+    };
+
+    // 1. File matching src/billing
+    const billingConfig = resolveConfigForFile(configWithMappings, "src/billing/Invoice.cls");
+    assert.strictEqual(billingConfig.namespace, "BILLING");
+    assert.strictEqual(billingConfig.serverName, configWithMappings.serverName);
+
+    // 2. File matching src/core with server override
+    const coreConfig = resolveConfigForFile(configWithMappings, "src/core/Kernel.cls");
+    assert.strictEqual(coreConfig.namespace, "CORE");
+    assert.strictEqual(coreConfig.serverName, "prod-iris");
+    assert.strictEqual(coreConfig.serverSpec.webServer.host, "prod.local");
+
+    // 3. File outside mappings retains base config
+    const defaultFileConfig = resolveConfigForFile(configWithMappings, "src/other/Test.cls");
+    assert.strictEqual(defaultFileConfig.namespace, "USER");
+    assert.strictEqual(defaultFileConfig.serverName, configWithMappings.serverName);
   });
 
   console.log("\n============================================================");

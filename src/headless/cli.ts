@@ -16,6 +16,7 @@ import { CurrentTextFile } from "../utils";
 import {
   resolveConfiguration,
   applyConfigurationToShim,
+  resolveConfigForFile,
   CliConfigOverrides,
   ResolvedConfig,
   parseJsoncSafe,
@@ -201,25 +202,32 @@ async function syncAndCompileFile(
     return false;
   }
 
-  const file = createTextFileForPath(absPath, config.sourceRoot);
+  // Dynamically resolve target config based on folder-to-namespace mappings (Milestone M2.3)
+  const targetConfig = resolveConfigForFile(config, absPath);
+  if (targetConfig.namespace !== config.namespace || targetConfig.serverName !== config.serverName) {
+    applyConfigurationToShim(targetConfig);
+  }
+
+  const file = createTextFileForPath(absPath, targetConfig.sourceRoot);
   const docName = file.name;
   const api = new AtelierAPI(file.uri);
-  api.setNamespace(config.namespace);
+  api.setNamespace(targetConfig.namespace);
 
-  logger.info(`[SYNC] Uploading ${docName} to [${config.namespace}]...`);
+  const serverInfo = targetConfig.serverName !== config.serverName ? ` on [${targetConfig.serverName}]` : "";
+  logger.info(`[SYNC] Uploading ${docName} to [${targetConfig.namespace}]${serverInfo}...`);
 
   // Concurrency check
-  const ignoreConflict = forceOverwrite || config.conflictPolicy === "overwrite";
+  const ignoreConflict = forceOverwrite || targetConfig.conflictPolicy === "overwrite";
 
   try {
     // Leverage upstream importFile
     await importFile(file, !noCompile, ignoreConflict);
   } catch (err: any) {
-    if (config.conflictPolicy === "pull") {
+    if (targetConfig.conflictPolicy === "pull") {
       logger.success(`[PULL] Pulled server version into '${filePath}'.`);
       return true;
     }
-    if (config.conflictPolicy === "diff") {
+    if (targetConfig.conflictPolicy === "diff") {
       return false;
     }
     if (err) {
@@ -234,13 +242,13 @@ async function syncAndCompileFile(
   }
 
   // Compilation phase: Drive upstream compile() or WebSocket streaming
-  logger.info(`[COMPILE] Compiling ${docName} with flags: ${config.compileFlags}...`);
+  logger.info(`[COMPILE] Compiling ${docName} in [${targetConfig.namespace}] with flags: ${targetConfig.compileFlags}...`);
   try {
     const t0 = Date.now();
     if (useStream) {
       try {
-        const streamer = new AtelierWebSocketStreamer(config, api.cookies);
-        const res = await streamer.compileStream(docName, config.compileFlags, {
+        const streamer = new AtelierWebSocketStreamer(targetConfig, api.cookies);
+        const res = await streamer.compileStream(docName, targetConfig.compileFlags, {
           onLine: (line) => logger.info(`[WS-STREAM] ${line}`),
         });
         streamer.close();
@@ -258,7 +266,7 @@ async function syncAndCompileFile(
         await compile([file]);
       } catch (_) {
         // Fallback: If /work async compile is unsupported on older server, use actionCompile + loadChanges
-        const compRes = await api.actionCompile([docName], config.compileFlags);
+        const compRes = await api.actionCompile([docName], targetConfig.compileFlags);
         await loadChanges([file]);
         if (compRes.status?.errors?.length) {
           logger.error(`Compilation errors in ${docName}: ${JSON.stringify(compRes.status.errors)}`);
@@ -409,6 +417,9 @@ program
     console.log(` Target: ${config.serverSpec.webServer.host}:${config.serverSpec.webServer.port}`);
     console.log(` Namespace: ${config.namespace} | Server: ${config.serverName}`);
     console.log(` Watching Directory: ${watchDir}`);
+    if (config.mappings && config.mappings.length > 0) {
+      console.log(` Mappings: ${config.mappings.map((m) => `${m.dir} -> [${m.namespace}]`).join(", ")}`);
+    }
     console.log(` Conflict Policy: ${config.conflictPolicy} | Flags: ${config.compileFlags}`);
     console.log("============================================================\n");
 
@@ -432,6 +443,7 @@ program
       try {
         const walk = (dir: string): string[] => {
           let results: string[] = [];
+          if (!fs.existsSync(dir)) return results;
           const list = fs.readdirSync(dir);
           for (const item of list) {
             const full = path.join(dir, item);
@@ -447,7 +459,20 @@ program
           return results;
         };
 
-        let currentFiles = walk(watchDir);
+        const scanDirs = new Set<string>();
+        if (fs.existsSync(watchDir)) scanDirs.add(watchDir);
+        if (config.mappings) {
+          for (const m of config.mappings) {
+            const mapAbs = path.resolve(process.cwd(), m.dir);
+            if (fs.existsSync(mapAbs)) scanDirs.add(mapAbs);
+          }
+        }
+
+        let currentFiles: string[] = [];
+        for (const sd of scanDirs) {
+          currentFiles = currentFiles.concat(walk(sd));
+        }
+        currentFiles = Array.from(new Set(currentFiles));
         if (projectItemPaths) {
           currentFiles = currentFiles.filter((f) =>
             projectItemPaths!.has(path.resolve(f).replace(/\\/g, "/").toLowerCase())
@@ -499,9 +524,10 @@ program
   .option("--flags <flags>", "Compiler flags (default: cuk)")
   .option("--stream", "Stream real-time batch compilation console lines via WebSocket (Milestone M2.2)")
   .action(async (cmdOptions: any) => {
-    const globalOpts = program.opts();
-    const config = bootstrapEnvironment({
-      profile: globalOpts.profile,
+    try {
+      const globalOpts = program.opts();
+      const config = bootstrapEnvironment({
+        profile: globalOpts.profile,
       server: globalOpts.server,
       namespace: globalOpts.namespace,
       flags: cmdOptions.flags,
@@ -531,74 +557,111 @@ program
       return results;
     };
 
-    const files = walk(rootDir);
-    logger.info(`Found ${files.length} ObjectScript files to compile in ${rootDir}.`);
+    const scanDirs = new Set<string>();
+    if (fs.existsSync(rootDir)) scanDirs.add(rootDir);
+    if (config.mappings) {
+      for (const m of config.mappings) {
+        const mapAbs = path.resolve(process.cwd(), m.dir);
+        if (fs.existsSync(mapAbs)) scanDirs.add(mapAbs);
+      }
+    }
+
+    let files: string[] = [];
+    for (const sd of scanDirs) {
+      files = files.concat(walk(sd));
+    }
+    files = Array.from(new Set(files));
+
+    logger.info(`Found ${files.length} ObjectScript files across ${scanDirs.size} source tree(s).`);
 
     if (files.length === 0) {
       logger.info("No files found to compile.");
       process.exit(0);
     }
 
-    const textFiles: CurrentTextFile[] = [];
-    let uploadFailures = 0;
+    // Group files by resolved target configuration (Milestone M2.3 Multi-Namespace)
+    const groups = new Map<string, { targetConfig: ResolvedConfig; textFiles: CurrentTextFile[] }>();
     for (const f of files) {
+      const targetConfig = resolveConfigForFile(config, f);
+      const groupKey = `${targetConfig.serverName}::${targetConfig.namespace}`;
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, { targetConfig, textFiles: [] });
+      }
+      const tf = createTextFileForPath(f, targetConfig.sourceRoot);
+      groups.get(groupKey)!.textFiles.push(tf);
+    }
+
+    let totalCompiled = 0;
+    const t0 = Date.now();
+
+    for (const [groupKey, group] of groups.entries()) {
+      const { targetConfig, textFiles } = group;
+      logger.info(`[GROUP] Target [${targetConfig.namespace}] on [${targetConfig.serverName}] (${textFiles.length} files)...`);
+      applyConfigurationToShim(targetConfig);
+
+      let uploadFailures = 0;
+      for (const tf of textFiles) {
+        try {
+          await importFile(tf, true, true);
+        } catch (err: any) {
+          uploadFailures++;
+          logger.warn(`Upload failed for ${tf.name}: ${err?.message || err}`);
+        }
+      }
+
       try {
-        const tf = createTextFileForPath(f, config.sourceRoot);
-        textFiles.push(tf);
-        await importFile(tf, true, true);
+        logger.info(`Compiling ${textFiles.length} documents in [${targetConfig.namespace}] with flags: ${targetConfig.compileFlags}...`);
+        if (cmdOptions.stream) {
+          try {
+            const api = new AtelierAPI(textFiles[0].uri);
+            api.setNamespace(targetConfig.namespace);
+            const streamer = new AtelierWebSocketStreamer(targetConfig, api.cookies);
+            const docNames = textFiles.map((t) => t.name);
+            const res = await streamer.compileStream(docNames, targetConfig.compileFlags, {
+              onLine: (line) => logger.info(`[WS-STREAM] ${line}`),
+            });
+            streamer.close();
+            await loadChanges(textFiles);
+            if (!res.success) {
+              logger.error(`Batch compilation encountered errors over WebSocket for [${targetConfig.namespace}].`);
+              process.exit(1);
+            }
+          } catch (wsErr: any) {
+            logger.warn(`WebSocket stream note: ${wsErr?.message || wsErr}; falling back to HTTP.`);
+            await compile(textFiles);
+          }
+        } else {
+          try {
+            await compile(textFiles);
+          } catch (_) {
+            const api = new AtelierAPI(textFiles[0].uri);
+            api.setNamespace(targetConfig.namespace);
+            const compRes = await api.actionCompile(
+              textFiles.map((t) => t.name),
+              targetConfig.compileFlags
+            );
+            await loadChanges(textFiles);
+            if (compRes.status?.errors?.length) {
+              logger.error(`Batch compilation errors: ${JSON.stringify(compRes.status.errors)}`);
+              process.exit(1);
+            }
+          }
+        }
+        totalCompiled += textFiles.length;
       } catch (err: any) {
-        uploadFailures++;
-        logger.warn(`Upload failed for ${f}: ${err?.message || err}`);
+        logger.error(`Compilation failed for group [${targetConfig.namespace}]: ${err?.message || err}`);
+        process.exit(1);
       }
     }
 
-    try {
-      logger.info(`Compiling ${textFiles.length} documents in batch with flags: ${config.compileFlags}...`);
-      const t0 = Date.now();
-      if (cmdOptions.stream) {
-        try {
-          const api = new AtelierAPI(textFiles[0].uri);
-          api.setNamespace(config.namespace);
-          const streamer = new AtelierWebSocketStreamer(config, api.cookies);
-          const docNames = textFiles.map((t) => t.name);
-          const res = await streamer.compileStream(docNames, config.compileFlags, {
-            onLine: (line) => logger.info(`[WS-STREAM] ${line}`),
-          });
-          streamer.close();
-          await loadChanges(textFiles);
-          if (!res.success) {
-            logger.error(`Batch compilation encountered errors over WebSocket.`);
-            process.exit(1);
-          }
-        } catch (wsErr: any) {
-          logger.warn(`WebSocket stream note: ${wsErr?.message || wsErr}; falling back to HTTP.`);
-          await compile(textFiles);
-        }
-      } else {
-        try {
-          await compile(textFiles);
-        } catch (_) {
-          const api = new AtelierAPI(textFiles[0].uri);
-          api.setNamespace(config.namespace);
-          const compRes = await api.actionCompile(
-            textFiles.map((t) => t.name),
-            config.compileFlags
-          );
-          await loadChanges(textFiles);
-          if (compRes.status?.errors?.length) {
-            logger.error(`Batch compilation errors: ${JSON.stringify(compRes.status.errors)}`);
-            process.exit(1);
-          }
-        }
-      }
-      const elapsed = Date.now() - t0;
-      logger.success(`Batch compilation finished in ${elapsed}ms. All ${textFiles.length} documents compiled.`);
-      process.exit(uploadFailures === 0 ? 0 : 1);
-    } catch (err: any) {
-      logger.error(`Batch compilation failed: ${err?.message || err}`);
-      process.exit(1);
-    }
-  });
+    const elapsed = Date.now() - t0;
+    logger.success(`Batch compilation finished in ${elapsed}ms. All ${totalCompiled} documents compiled across ${groups.size} namespace group(s).`);
+    process.exit(0);
+  } catch (err: any) {
+    logger.error(`Batch compilation failed: ${err?.message || err}`);
+    process.exit(1);
+  }
+});
 
 // --- PING ---
 program

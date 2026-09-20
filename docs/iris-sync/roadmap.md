@@ -53,7 +53,7 @@
   - [x] Bidirectional WebSocket client in `src/headless/`
   - [x] Zero-polling real-time compilation console line streaming to stdout
   - [x] Sub-millisecond error notification latency
-- [ ] **M2.3: Multi-Namespace & Multi-Root Workspace mappings (`mappings` in `config.json`)**
+- [x] **M2.3: Multi-Namespace & Multi-Root Workspace mappings (`mappings` in `config.json`)**
 - [ ] **M2.4: Standalone Self-Contained Native Binary (Node SEA / Bun compile)**
 
 ---
@@ -212,7 +212,7 @@ Timeline Overview:
   - Implement WebSocket streaming client in `src/headless/` to stream real-time compilation console lines directly to stdout without polling.
   - Sub-millisecond latency for compiler error notifications on large multi-class compilations.
 
-- [ ] **M2.3: Multi-Namespace & Multi-Root Workspace Support**
+- [x] **M2.3: Multi-Namespace & Multi-Root Workspace Support**
   - Allow `.iris-sync/config.json` to define folder-to-namespace mappings:
     ```json
     {

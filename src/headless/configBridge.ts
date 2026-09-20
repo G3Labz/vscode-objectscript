@@ -24,6 +24,13 @@ export interface ServerSpec {
   password?: string;
 }
 
+export interface FolderMapping {
+  dir: string;
+  namespace: string;
+  server?: string;
+  compileFlags?: string;
+}
+
 export interface WorkspaceProfile {
   server?: string;
   namespace?: string;
@@ -31,6 +38,7 @@ export interface WorkspaceProfile {
   sourceRoot?: string;
   watchPatterns?: string[];
   conflictPolicy?: "fail" | "overwrite" | "pull" | "diff" | "merge";
+  mappings?: FolderMapping[];
 }
 
 export interface ResolvedConfig {
@@ -43,6 +51,7 @@ export interface ResolvedConfig {
   conflictPolicy: "fail" | "overwrite" | "pull" | "diff" | "merge";
   insecure: boolean;
   servers: Record<string, ServerSpec>;
+  mappings: FolderMapping[];
 }
 
 export interface CliConfigOverrides {
@@ -301,10 +310,26 @@ export function resolveConfiguration(overrides: CliConfigOverrides = {}): Resolv
     vsCodeSettings?.["objectscript.export"]?.folder ||
     "src";
 
+  // Multi-Namespace & Multi-Root Workspace mappings (Milestone M2.3)
+  const rawMappings = profileData.mappings || localRc?.mappings || globalRc?.mappings || [];
+  const mappings: FolderMapping[] = Array.isArray(rawMappings)
+    ? rawMappings.map((m: any) => ({
+        dir: (m.dir || "").replace(/\\/g, "/").replace(/\/$/, ""),
+        namespace: (m.namespace || "USER").toUpperCase(),
+        server: m.server,
+        compileFlags: m.compileFlags,
+      }))
+    : [];
+
   const watchPatterns = profileData.watchPatterns || [
     path.join(sourceRoot, "**/*.cls"),
     path.join(sourceRoot, "**/*.mac"),
     path.join(sourceRoot, "**/*.inc"),
+    ...mappings.flatMap((m) => [
+      path.join(m.dir, "**/*.cls"),
+      path.join(m.dir, "**/*.mac"),
+      path.join(m.dir, "**/*.inc"),
+    ]),
   ];
 
   const conflictPolicy: "fail" | "overwrite" | "pull" | "diff" | "merge" =
@@ -325,6 +350,50 @@ export function resolveConfiguration(overrides: CliConfigOverrides = {}): Resolv
     conflictPolicy,
     insecure,
     servers: serversCatalog,
+    mappings,
+  };
+}
+
+/**
+ * Resolves the effective configuration for a specific file based on multi-namespace mappings (Milestone M2.3).
+ * If the file path matches a mapped directory, its namespace, server, and compileFlags are overridden.
+ */
+export function resolveConfigForFile(config: ResolvedConfig, filePath: string): ResolvedConfig {
+  if (!config.mappings || config.mappings.length === 0) {
+    return config;
+  }
+
+  // Normalize path with forward slashes for matching
+  const cwd = process.cwd().replace(/\\/g, "/");
+  let normalized = filePath.replace(/\\/g, "/");
+  if (normalized.startsWith(cwd + "/")) {
+    normalized = normalized.slice(cwd.length + 1);
+  }
+
+  // Find the most specific mapping (longest matching dir)
+  let matchedMapping: FolderMapping | undefined;
+  for (const m of config.mappings) {
+    const mapDir = m.dir.replace(/\/$/, "");
+    if (normalized === mapDir || normalized.startsWith(mapDir + "/")) {
+      if (!matchedMapping || mapDir.length > matchedMapping.dir.length) {
+        matchedMapping = m;
+      }
+    }
+  }
+
+  if (!matchedMapping) {
+    return config;
+  }
+
+  const targetServerName = matchedMapping.server || config.serverName;
+  const targetServerSpec = config.servers[targetServerName] || config.serverSpec;
+
+  return {
+    ...config,
+    serverName: targetServerName,
+    serverSpec: targetServerSpec,
+    namespace: matchedMapping.namespace.toUpperCase(),
+    compileFlags: matchedMapping.compileFlags || config.compileFlags,
   };
 }
 

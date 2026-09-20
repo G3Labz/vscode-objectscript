@@ -66,10 +66,52 @@
             ],
             "default": "fail",
             "description": "Concurrency resolution behavior when the server version has diverged (HTTP 409)"
+          },
+          "mappings": {
+            "type": "array",
+            "description": "Folder-to-namespace mappings for this profile",
+            "items": {
+              "$ref": "#/definitions/FolderMapping"
+            }
           }
         },
         "additionalProperties": false
       }
+    },
+    "mappings": {
+      "type": "array",
+      "description": "Folder-to-namespace mappings for multi-namespace and multi-root workspaces",
+      "items": {
+        "$ref": "#/definitions/FolderMapping"
+      }
+    }
+  },
+  "definitions": {
+    "FolderMapping": {
+      "type": "object",
+      "required": [
+        "dir",
+        "namespace"
+      ],
+      "properties": {
+        "dir": {
+          "type": "string",
+          "description": "Relative directory path (e.g. src/core, src/billing)"
+        },
+        "namespace": {
+          "type": "string",
+          "description": "Target InterSystems IRIS namespace"
+        },
+        "server": {
+          "type": "string",
+          "description": "Optional target server key override"
+        },
+        "compileFlags": {
+          "type": "string",
+          "description": "Optional compile flags override"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "required": [
