@@ -54,6 +54,7 @@ import {
   generateSystemdService,
   generateLaunchdPlist,
 } from "./daemon";
+import { AtelierWebSocketStreamer } from "./wsStream";
 
 // ---------------------------------------------------------------------------
 // Bootstrap Runtime Shim & Upstream Extension Context
@@ -191,7 +192,8 @@ async function syncAndCompileFile(
   filePath: string,
   config: ResolvedConfig,
   forceOverwrite: boolean = false,
-  noCompile: boolean = false
+  noCompile: boolean = false,
+  useStream: boolean = false
 ): Promise<boolean> {
   const absPath = path.resolve(filePath);
   if (!fs.existsSync(absPath)) {
@@ -231,19 +233,37 @@ async function syncAndCompileFile(
     return true;
   }
 
-  // Compilation phase: Drive upstream compile() and loadChanges() for Storage reconciliation
+  // Compilation phase: Drive upstream compile() or WebSocket streaming
   logger.info(`[COMPILE] Compiling ${docName} with flags: ${config.compileFlags}...`);
   try {
     const t0 = Date.now();
-    try {
-      await compile([file]);
-    } catch (_) {
-      // Fallback: If /work async compile is unsupported on older server, use actionCompile + loadChanges
-      const compRes = await api.actionCompile([docName], config.compileFlags);
-      await loadChanges([file]);
-      if (compRes.status?.errors?.length) {
-        logger.error(`Compilation errors in ${docName}: ${JSON.stringify(compRes.status.errors)}`);
-        return false;
+    if (useStream) {
+      try {
+        const streamer = new AtelierWebSocketStreamer(config, api.cookies);
+        const res = await streamer.compileStream(docName, config.compileFlags, {
+          onLine: (line) => logger.info(`[WS-STREAM] ${line}`),
+        });
+        streamer.close();
+        await loadChanges([file]);
+        if (!res.success) {
+          logger.error(`Compilation errors reported via WebSocket stream.`);
+          return false;
+        }
+      } catch (wsErr: any) {
+        logger.warn(`WebSocket stream note (${wsErr?.message || wsErr}); falling back to HTTP compilation.`);
+        await compile([file]);
+      }
+    } else {
+      try {
+        await compile([file]);
+      } catch (_) {
+        // Fallback: If /work async compile is unsupported on older server, use actionCompile + loadChanges
+        const compRes = await api.actionCompile([docName], config.compileFlags);
+        await loadChanges([file]);
+        if (compRes.status?.errors?.length) {
+          logger.error(`Compilation errors in ${docName}: ${JSON.stringify(compRes.status.errors)}`);
+          return false;
+        }
       }
     }
     const elapsed = Date.now() - t0;
@@ -284,6 +304,7 @@ program
   .option("-p, --project <name>", "Compile files tracked by named project manifest (.iris-sync/projects/<name>.json)")
   .option("-f, --force", "Force overwrite of server copy (bypasses 409 conflict checks)")
   .option("--flags <flags>", "Compiler flags (e.g., cuk, cukd)")
+  .option("--stream", "Stream real-time compilation console lines via WebSocket (Milestone M2.2)")
   .option("--no-compile", "Upload documents without triggering compiler")
   .action(async (files: string[], cmdOptions: any) => {
     const globalOpts = program.opts();
@@ -317,7 +338,7 @@ program
 
     let allSuccess = true;
     for (const f of files) {
-      const ok = await syncAndCompileFile(f, config, cmdOptions.force, !cmdOptions.compile);
+      const ok = await syncAndCompileFile(f, config, cmdOptions.force, !cmdOptions.compile, cmdOptions.stream);
       if (!ok) allSuccess = false;
     }
 
@@ -331,6 +352,7 @@ program
   .option("-p, --project <name>", "Scope watcher exclusively to files in named project manifest")
   .option("--dir <dir>", "Directory to monitor (default: src/)")
   .option("--flags <flags>", "Compiler flags (e.g., cuk)")
+  .option("--stream", "Stream real-time compilation console lines via WebSocket (Milestone M2.2)")
   .option("--conflict <policy>", "Conflict policy: fail | overwrite | pull | diff")
   .option("--coexist", "Tune VS Code extension into vscodeOnly coexistence mode")
   .action(async (cmdOptions: any) => {
@@ -445,7 +467,7 @@ program
             }
             semanticHashes.set(file, currentHash);
             logger.info(`[DETECT] Modified: ${path.relative(process.cwd(), file)}`);
-            await syncAndCompileFile(file, config);
+            await syncAndCompileFile(file, config, false, false, cmdOptions.stream);
             try {
               const newStat = fs.statSync(file);
               mtimes.set(file, newStat.mtimeMs);
@@ -475,6 +497,7 @@ program
   .description("Batch compile entire workspace source tree")
   .option("--all", "Compile all detected classes and routines")
   .option("--flags <flags>", "Compiler flags (default: cuk)")
+  .option("--stream", "Stream real-time batch compilation console lines via WebSocket (Milestone M2.2)")
   .action(async (cmdOptions: any) => {
     const globalOpts = program.opts();
     const config = bootstrapEnvironment({
@@ -532,19 +555,40 @@ program
     try {
       logger.info(`Compiling ${textFiles.length} documents in batch with flags: ${config.compileFlags}...`);
       const t0 = Date.now();
-      try {
-        await compile(textFiles);
-      } catch (_) {
-        const api = new AtelierAPI(textFiles[0].uri);
-        api.setNamespace(config.namespace);
-        const compRes = await api.actionCompile(
-          textFiles.map((t) => t.name),
-          config.compileFlags
-        );
-        await loadChanges(textFiles);
-        if (compRes.status?.errors?.length) {
-          logger.error(`Batch compilation errors: ${JSON.stringify(compRes.status.errors)}`);
-          process.exit(1);
+      if (cmdOptions.stream) {
+        try {
+          const api = new AtelierAPI(textFiles[0].uri);
+          api.setNamespace(config.namespace);
+          const streamer = new AtelierWebSocketStreamer(config, api.cookies);
+          const docNames = textFiles.map((t) => t.name);
+          const res = await streamer.compileStream(docNames, config.compileFlags, {
+            onLine: (line) => logger.info(`[WS-STREAM] ${line}`),
+          });
+          streamer.close();
+          await loadChanges(textFiles);
+          if (!res.success) {
+            logger.error(`Batch compilation encountered errors over WebSocket.`);
+            process.exit(1);
+          }
+        } catch (wsErr: any) {
+          logger.warn(`WebSocket stream note: ${wsErr?.message || wsErr}; falling back to HTTP.`);
+          await compile(textFiles);
+        }
+      } else {
+        try {
+          await compile(textFiles);
+        } catch (_) {
+          const api = new AtelierAPI(textFiles[0].uri);
+          api.setNamespace(config.namespace);
+          const compRes = await api.actionCompile(
+            textFiles.map((t) => t.name),
+            config.compileFlags
+          );
+          await loadChanges(textFiles);
+          if (compRes.status?.errors?.length) {
+            logger.error(`Batch compilation errors: ${JSON.stringify(compRes.status.errors)}`);
+            process.exit(1);
+          }
         }
       }
       const elapsed = Date.now() - t0;

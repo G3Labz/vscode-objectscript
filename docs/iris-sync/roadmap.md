@@ -49,10 +49,10 @@
   - [x] PID file locking (`~/.iris-sync/daemon.pid`) & graceful termination (`iris-sync daemon stop`, `status`)
   - [x] Detached background watcher spawning (`iris-sync daemon start`)
   - [x] Rotating structured JSON & syslog log handlers
-- [ ] **M2.2: WebSocket Compiler Streaming (`api.atelier.websocket`)**
-  - [ ] Bidirectional WebSocket client in `src/headless/`
-  - [ ] Zero-polling real-time compilation console line streaming to stdout
-  - [ ] Sub-millisecond error notification latency
+- [x] **M2.2: WebSocket Compiler Streaming (`api.atelier.websocket`)**
+  - [x] Bidirectional WebSocket client in `src/headless/`
+  - [x] Zero-polling real-time compilation console line streaming to stdout
+  - [x] Sub-millisecond error notification latency
 - [ ] **M2.3: Multi-Namespace & Multi-Root Workspace mappings (`mappings` in `config.json`)**
 - [ ] **M2.4: Standalone Self-Contained Native Binary (Node SEA / Bun compile)**
 

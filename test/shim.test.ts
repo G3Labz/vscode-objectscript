@@ -626,6 +626,18 @@ async function runTests() {
     assert.ok(launchdOut.includes("com.g3labz.iris-sync"));
   });
 
+  await it("iris-sync compile, watch, build support --stream WebSocket option (M2.2)", () => {
+    const compileHelp = execSync(`node "${binPath}" compile --help`, { encoding: "utf8" });
+    assert.ok(compileHelp.includes("--stream"));
+    assert.ok(compileHelp.includes("WebSocket"));
+
+    const watchHelp = execSync(`node "${binPath}" watch --help`, { encoding: "utf8" });
+    assert.ok(watchHelp.includes("--stream"));
+
+    const buildHelp = execSync(`node "${binPath}" build --help`, { encoding: "utf8" });
+    assert.ok(buildHelp.includes("--stream"));
+  });
+
   console.log("\n============================================================");
   console.log(` Test Summary: ${testsPassed} passed, ${testsFailed} failed`);
   console.log("============================================================\n");
