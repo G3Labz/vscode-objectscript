@@ -33,7 +33,7 @@
 
 ---
 
-### Phase 2: Studio Projects, Daemonization & Streaming (Current Phase)
+### Phase 2: Studio Projects, Daemonization & Streaming (Completed - v0.2.0)
 - [x] **M2.5: Studio Project Parity (`iris-sync project`)**
   - [x] Draft-07 project schema definition (`schemas/irisproject.schema.json`)
   - [x] Local-first manifest tracking (`.iris-sync/projects/<name>.json`)
@@ -58,7 +58,7 @@
 
 ---
 
-### Phase 3: AI Coding Agent Protocols & Testing Engine (Mid-Term)
+### Phase 3: AI Coding Agent Protocols & Testing Engine (Current Phase)
 - [ ] **M3.1: Model Context Protocol (MCP) Server (`iris-sync mcp`)**
   - [ ] `tools/iris_compile` & `tools/iris_query_errors`
   - [ ] `tools/iris_inspect` & `tools/iris_eval`
