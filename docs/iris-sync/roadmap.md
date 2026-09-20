@@ -54,7 +54,7 @@
   - [x] Zero-polling real-time compilation console line streaming to stdout
   - [x] Sub-millisecond error notification latency
 - [x] **M2.3: Multi-Namespace & Multi-Root Workspace mappings (`mappings` in `config.json`)**
-- [ ] **M2.4: Standalone Self-Contained Native Binary (Node SEA / Bun compile)**
+- [x] **M2.4: Standalone Self-Contained Native Binary (Node SEA / Bun compile)**
 
 ---
 
@@ -224,7 +224,7 @@ Timeline Overview:
     ```
   - Single watcher process dispatching events across multiple target namespaces concurrently.
 
-- [ ] **M2.4: Standalone Self-Contained Binary Distribution**
+- [x] **M2.4: Standalone Self-Contained Binary Distribution**
   - Package `iris-sync` as a zero-dependency native binary (using Node.js Single Executable Applications - SEA, or Bun compile):
     - `iris-sync-linux-x64`
     - `iris-sync-linux-arm64`

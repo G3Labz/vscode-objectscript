@@ -674,6 +674,19 @@ async function runTests() {
     assert.strictEqual(defaultFileConfig.serverName, configWithMappings.serverName);
   });
 
+  await it("Standalone native binary executes directly without Node wrapper (M2.4)", () => {
+    const platform = process.platform;
+    const arch = process.arch;
+    const ext = platform === "win32" ? ".exe" : "";
+    const nativeBin = path.resolve(__dirname, `../dist/cli/iris-sync-${platform}-${arch}${ext}`);
+    if (fs.existsSync(nativeBin)) {
+      const out = execSync(`"${nativeBin}" -V`, { encoding: "utf8" }).trim();
+      assert.ok(out.startsWith("b.3.8.6-SNAPSHOT-c."));
+      const help = execSync(`"${nativeBin}" --help`, { encoding: "utf8" });
+      assert.ok(help.includes("InterSystems IRIS Headless"));
+    }
+  });
+
   console.log("\n============================================================");
   console.log(` Test Summary: ${testsPassed} passed, ${testsFailed} failed`);
   console.log("============================================================\n");
