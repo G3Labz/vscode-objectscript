@@ -4,74 +4,82 @@
 
 ---
 
-## 1. Executive Summary & Quick-Look State
+## 1. Quick Status Glance
 
-> [!NOTE]
-> **Current Status (March 2026)**: **Phase 2 Active**. First pre-release **`b.3.8.6-SNAPSHOT-c.0.0.1-ALPHA`** is published on GitHub with pre-compiled standalone binaries. 100% Pattern A upstream isolation achieved; 33/33 unit/integration tests passing. Active focus is **Milestone M2.5 (Studio Project Parity & Offline Manifests)**.
+> **Legend**:
+> - `[x]` **Done**: Completed, verified, and active
+> - `[/]` **Doing**: Actively in progress
+> - `[ ]` **Backlog**: Planned / Not yet started
+> - `[!]` **Impediment / Note**: Blocker, external dependency, or attention required
 
-### 1.1 At-A-Glance Project State Dashboard
+---
 
-| Metric / Dimension | Current State | Notes & References |
-| :--- | :--- | :--- |
-| **Active Version** | `b.3.8.6-SNAPSHOT-c.0.0.1-ALPHA` | Dual-version scheme (`b` = extension base, `c` = CLI build) |
-| **Release Status** | **Pre-release (Alpha)** | Assets: `iris-sync-b.3.8.6-SNAPSHOT-c.0.0.1-ALPHA.js` (+ `.map`) |
-| **Active Roadmap Phase**| **Phase 2: Daemonization, Projects & Streaming** | Phase 1 (Foundations & Pattern A) **100% Completed** |
-| **Immediate Priority** | **M2.5: Studio Project Parity (`iris-sync project`)** | Offline manifests (`.iris-sync/projects/`), scoped sync & export |
-| **Engine Architecture** | **Pattern A (Virtual Runtime Shim)** | Upstream files untouched; aliased via `vscode-shim.ts` |
-| **Test Suite Health** | **33 / 33 Passing (100%)** | 9 test suites; 100% AST symbol coverage (64 files, 148 symbols) |
-| **Binary Output Path** | `./dist/cli/` | Canonical alias: `./dist/cli/iris-sync.js` (legacy `./bin/` retired) |
-| **Config Topology** | Two-Tier (`.iris-sync/servers.json`, `config.json`)| Global (`~/.iris-sync/`) & Local (`./.iris-sync/`) + `.vscode/` fallback |
-| **Draft-07 Schemas** | 4 Schemas Published (GitHub HTTPS URLs) | `servers.json`, `config.json`, `cache.json`, `projects/*.json` |
-| **Sandbox Status** | Verified against IRIS 2026.2 container | Ping, compile, batch build, diff, watch tested in `IrisSandbox` |
+### Phase 1: Foundations & Architecture (Pattern A)
+- [x] Atelier REST API reverse-engineering (`/api/atelier/`, `PUT`, `DELETE`, `POST compile`)
+- [x] Pattern A: Virtual Runtime Shim (`src/headless/vscode-shim.ts` — zero upstream code modifications)
+- [x] Two-tier configuration topology (`.iris-sync/servers.json`, `config.json`) with `.vscode/` fallback
+- [x] Remote Draft-07 JSON Schemas (`servers`, `config`, `cache`, `project`) resolving over HTTPS
+- [x] Single-file compilation with optimistic locking & deterministic conflict policies (`fail`, `overwrite`, `pull`, `diff`)
+- [x] Workspace batch compilation (`iris-sync build --all`) with dependency fallback
+- [x] Filesystem watcher with semantic AST storage echo suppression (`iris-sync watch`)
+- [x] VS Code coexistence mode (`iris-sync watch --coexist` partitioning editor saves vs. external writes)
+- [x] Atomic Git batch compiler (`iris-sync git-sync`) & hook setup (`iris-sync setup --git-hooks`)
+- [x] Server profile ingestion from Windows Registry & `.vscode/settings.json` (`setup --from-registry|--from-vscode`)
+- [x] Non-destructive JSONC configuration bridge preserving comments & formatting (`iris-sync config sync`)
+- [x] Upstream AST contract parity scanner asserting 100% symbol coverage (`iris-sync dev sync-upstream`)
+- [x] Standalone build pipeline (`build/esbuild.cli.ts` -> `./dist/cli/`)
+- [x] Dual-versioning architecture (`b.<extVersion>-c.<cliVersion>` / `iris-sync dev version`)
+- [x] First GitHub Pre-release published (`b.3.8.6-SNAPSHOT-c.0.0.1-ALPHA`) with compiled assets
 
-### 1.2 Operational Capabilities at a Glance
+---
 
-```
-  WORKING TODAY (Production Ready in CLI)
-  ├── Server Connectivity : iris-sync ping (healthcheck & namespace discovery)
-  ├── Single-File Sync    : iris-sync compile <file> (optimistic locking & compiler flags)
-  ├── Batch Compilation   : iris-sync build --all (topological workspace compilation)
-  ├── Bi-Directional Diff : iris-sync diff <file> (colorized remote vs. local UDL diff)
-  ├── Remote Code Pull    : iris-sync pull <file> (download server document to local disk)
-  ├── Live Watcher        : iris-sync watch (debounced AST semantic storage echo suppression)
-  ├── IDE Coexistence     : iris-sync watch --coexist (partitions saves: VS Code vs. external)
-  ├── Git Automation      : iris-sync git-sync (atomic checkout/pull/merge compiler)
-  ├── Git Hook Setup      : iris-sync setup --git-hooks (auto post-checkout & post-merge)
-  ├── Server Ingestion    : iris-sync setup --from-registry | --from-vscode
-  ├── Non-Destructive Sync: iris-sync config sync (preserves JSONC comments & formatting)
-  ├── Version Inspector   : iris-sync dev version (composite tag & build matrix)
-  └── Upstream AST Audit  : iris-sync dev sync-upstream (asserts 100% vscode.* shim coverage)
-```
+### Phase 2: Studio Projects, Daemonization & Streaming (Current Phase)
+- [/] **M2.5: Studio Project Parity (`iris-sync project`)**
+  - [x] Draft-07 project schema definition (`schemas/irisproject.schema.json`)
+  - [/] Local-first manifest tracking (`.iris-sync/projects/<name>.json`)
+  - [ ] Project management CLI (`project list`, `project create`, `project add`, `project remove`)
+  - [ ] Server `%Studio.Project` manifest bi-directional synchronization
+  - [ ] Project-scoped compilation (`iris-sync compile --project <name>`)
+  - [ ] Project-scoped file watching (`iris-sync watch --project <name>`)
+  - [ ] Project export pipeline (XML / UDL bundle export via `%SYSTEM.OBJ.Export`)
+  - [ ] Direct headless promotion / push-to-prod (`iris-sync project deploy <name> --target prod`)
+- [ ] **M2.1: Background Service Daemonization (`iris-sync daemon`)**
+  - [ ] Linux systemd user/system service generator
+  - [ ] macOS launchd daemon plist generator
+  - [ ] PID file locking (`~/.iris-sync/daemon.pid`) & graceful termination (`iris-sync daemon stop`)
+  - [ ] Rotating structured JSON & syslog log handlers
+- [ ] **M2.2: WebSocket Compiler Streaming (`api.atelier.websocket`)**
+  - [ ] Bidirectional WebSocket client in `src/headless/`
+  - [ ] Zero-polling real-time compilation console line streaming to stdout
+  - [ ] Sub-millisecond error notification latency
+- [ ] **M2.3: Multi-Namespace & Multi-Root Workspace mappings (`mappings` in `config.json`)**
+- [ ] **M2.4: Standalone Self-Contained Native Binary (Node SEA / Bun compile)**
 
-### 1.3 Active Focus & Upcoming Trajectory
+---
 
-```
-  ┌─────────────────────────┐       ┌─────────────────────────┐       ┌─────────────────────────┐
-  │   NOW IN PROGRESS       │       │       NEXT UP           │       │       MID-TERM          │
-  │   Milestone M2.5        │  ──>  │   Milestones M2.1-M2.4  │  ──>  │   Phase 3 (MCP & Tests) │
-  │   Studio Project Parity │       │   Daemon & Streaming    │       │   AI Coding Protocols   │
-  └─────────────────────────┘       └─────────────────────────┘       └─────────────────────────┘
-   • Local .iris-sync/projects/      • OS service units (systemd)      • Built-in MCP Server
-   • Scoped compile/watch/diff       • WebSocket live stream           • SARIF / JSON diagnostics
-   • XML/UDL export & promotion      • Multi-namespace mappings        • Headless %UnitTest runner
-   • Push-to-prod pipeline           • Single Executable Binary (SEA)  • Autonomous repair loops
-```
+### Phase 3: AI Coding Agent Protocols & Testing Engine (Mid-Term)
+- [ ] **M3.1: Model Context Protocol (MCP) Server (`iris-sync mcp`)**
+  - [ ] `tools/iris_compile` & `tools/iris_query_errors`
+  - [ ] `tools/iris_inspect` & `tools/iris_eval`
+  - [ ] `tools/iris_project_export` & `tools/iris_project_deploy`
+  - [ ] `resources/iris_schema`
+- [ ] **M3.2: Structured Diagnostic Reporting (`--format=json`, `--format=sarif`)**
+- [ ] **M3.3: Headless `%UnitTest` Test Runner (`iris-sync test` with JUnit XML & TAP)**
 
-### 1.4 High-Level Phase Progression
+---
 
-```mermaid
-flowchart LR
-    P1["Phase 1: Foundations & Pattern A<br/><b>(COMPLETED)</b>"] --> P2["Phase 2: Daemonization, Projects & Streaming<br/><b>(CURRENT / NEAR-TERM)</b>"]
-    P2 --> P3["Phase 3: AI Agent MCP & Unit Testing<br/><b>(MID-TERM)</b>"]
-    P3 --> P4["Phase 4: Enterprise CI/CD & Auto-Sync Bot<br/><b>(LONG-TERM)</b>"]
+### Phase 4: Enterprise CI/CD & Auto-Sync (Long-Term)
+- [ ] **M4.1: Official CI/CD GitHub Actions & GitLab CI Templates (`ghcr.io/g3labz/iris-sync`)**
+- [ ] **M4.2: Automated Upstream Parity Bot (weekly sync & PR creation)**
+- [ ] **M4.3: Secure Credential Vault Bridge (HashiCorp Vault, AWS/GCP/Azure Secret Managers)**
+- [ ] **M4.4: Public Package Registry Publishing (`@g3labz/iris-sync` on npm)**
 
-    style P1 fill:#d4edda,stroke:#28a745,color:#155724
-    style P2 fill:#cce5ff,stroke:#004085,color:#004085
-    style P3 fill:#fff3cd,stroke:#856404,color:#856404
-    style P4 fill:#e2e3e5,stroke:#383d41,color:#383d41
-```
+---
 
-`iris-sync` is a standalone, lightweight, headless synchronization and compilation utility for InterSystems IRIS ObjectScript development. By eliminating the hard operational dependency on an actively running VS Code / Electron IDE process, `iris-sync` provides deterministic, high-throughput synchronization across CI/CD automation pipelines, remote terminal workflows, and autonomous AI coding agents.
+### Current Impediments & Notes `[!]`
+- [!] **Upstream `package.json` schema limitation**: Upstream extension `package.json` does not recognize `cliVersion`; maintained in our fork root and validated via `build/esbuild.cli.ts`.
+- [!] **Standalone SEA single-binary packaging (M2.4)**: Blocked until M2.5 manifest definitions and commands stabilize to avoid premature binary distribution churn.
+- [!] **OS Keyring Headless Fallback**: Linux environments without X11/DBus session keyrings require password fallback to environment variables (`IRIS_PASSWORD`) or plaintext config flag.
 
 ---
 
