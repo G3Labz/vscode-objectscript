@@ -26,6 +26,7 @@ import {
   formatConsoleReport,
   UnitTestRunReport,
 } from "../src/headless/testRunner";
+import { getIrisSyncVersions } from "../src/headless/version";
 
 const {
   Uri,
@@ -915,7 +916,8 @@ async function runTests() {
   });
 
   await it("iris-sync test --help exposes test filtering and output formatting flags", () => {
-    const cliPath = path.resolve(__dirname, `../dist/cli/iris-sync-b.3.8.6-SNAPSHOT-c.0.2.3-ALPHA.js`);
+    const { compositeVersion } = getIrisSyncVersions();
+    const cliPath = path.resolve(__dirname, `../dist/cli/iris-sync-${compositeVersion}.js`);
     const helpOut = execSync(`node "${cliPath}" test --help`).toString("utf8");
     assert.ok(helpOut.includes("--package"), "Missing --package option");
     assert.ok(helpOut.includes("--suite"), "Missing --suite option");

@@ -58,7 +58,7 @@
 
 ---
 
-### Phase 3: AI Coding Agent Protocols & Testing Engine (Current Phase)
+### Phase 3: AI Coding Agent Protocols & Testing Engine (Completed - v0.3.0)
 - [x] **M3.1: Model Context Protocol (MCP) Server (`iris-sync mcp`)**
   - [x] `tools/iris_compile` & `tools/iris_query_errors`
   - [x] `tools/iris_inspect` & `tools/iris_eval`
@@ -69,7 +69,7 @@
 
 ---
 
-### Phase 4: Enterprise CI/CD & Auto-Sync (Long-Term)
+### Phase 4: Enterprise CI/CD & Auto-Sync (Current Phase)
 - [ ] **M4.1: Official CI/CD GitHub Actions & GitLab CI Templates (`ghcr.io/g3labz/iris-sync`)**
 - [ ] **M4.2: Automated Upstream Parity Bot (weekly sync & PR creation)**
 - [ ] **M4.3: Secure Credential Vault Bridge (HashiCorp Vault, AWS/GCP/Azure Secret Managers)**
