@@ -687,6 +687,46 @@ async function runTests() {
     }
   });
 
+  await it("Model Context Protocol (MCP) Server: initialize and tools/list protocol parity (M3.1)", async () => {
+    const { spawn } = await import("child_process");
+    const proc = spawn("node", [binPath, "mcp"], { stdio: ["pipe", "pipe", "pipe"] });
+
+    return new Promise<void>((resolve, reject) => {
+      let output = "";
+      const timer = setTimeout(() => {
+        proc.kill();
+        reject(new Error("MCP test timed out"));
+      }, 5000);
+
+      proc.stdout.on("data", (chunk: Buffer) => {
+        output += chunk.toString("utf8");
+        if (output.includes("iris_compile") && output.includes("iris_inspect") && output.includes("iris_eval")) {
+          clearTimeout(timer);
+          proc.kill();
+          resolve();
+        }
+      });
+
+      const initMsg = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test", version: "1.0" } },
+      });
+      proc.stdin.write(`Content-Length: ${Buffer.byteLength(initMsg)}\r\n\r\n${initMsg}`);
+
+      setTimeout(() => {
+        const toolsMsg = JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: {},
+        });
+        proc.stdin.write(`Content-Length: ${Buffer.byteLength(toolsMsg)}\r\n\r\n${toolsMsg}`);
+      }, 100);
+    });
+  });
+
   console.log("\n============================================================");
   console.log(` Test Summary: ${testsPassed} passed, ${testsFailed} failed`);
   console.log("============================================================\n");

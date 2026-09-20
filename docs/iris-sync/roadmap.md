@@ -59,11 +59,11 @@
 ---
 
 ### Phase 3: AI Coding Agent Protocols & Testing Engine (Current Phase)
-- [ ] **M3.1: Model Context Protocol (MCP) Server (`iris-sync mcp`)**
-  - [ ] `tools/iris_compile` & `tools/iris_query_errors`
-  - [ ] `tools/iris_inspect` & `tools/iris_eval`
-  - [ ] `tools/iris_project_export` & `tools/iris_project_deploy`
-  - [ ] `resources/iris_schema`
+- [x] **M3.1: Model Context Protocol (MCP) Server (`iris-sync mcp`)**
+  - [x] `tools/iris_compile` & `tools/iris_query_errors`
+  - [x] `tools/iris_inspect` & `tools/iris_eval`
+  - [x] `tools/iris_project_export` & `tools/iris_project_deploy`
+  - [x] `resources/iris_schema`
 - [ ] **M3.2: Structured Diagnostic Reporting (`--format=json`, `--format=sarif`)**
 - [ ] **M3.3: Headless `%UnitTest` Test Runner (`iris-sync test` with JUnit XML & TAP)**
 
@@ -290,7 +290,7 @@ Timeline Overview:
 
 ### 4.2 Phase 3: AI Coding Agent Protocols & Testing Engine (Mid-Term)
 
-- [ ] **M3.1: Model Context Protocol (MCP) Server Integration**
+- [x] **M3.1: Model Context Protocol (MCP) Server Integration**
   - Implement an integrated MCP server within `iris-sync` (`iris-sync mcp`) allowing AI coding agents (Antigravity, Claude Code, Cursor, Copilot) to interact directly with the IRIS server:
     - `tools/iris_compile`: Synchronize and compile one or more classes.
     - `tools/iris_inspect`: Inspect server classes, properties, methods, and routine definitions.

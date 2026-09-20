@@ -8,11 +8,13 @@
  */
 
 import * as fs from "fs/promises";
+import * as syncFs from "fs";
 import * as path from "path";
 import { EventEmitter as NodeEventEmitter } from "events";
 import { URI, Utils as UriUtils } from "vscode-uri";
 import { HeadlessMemento } from "./headlessState";
 import { TerminalOutputChannel } from "./terminalLogger";
+import { CurrentTextFile } from "../utils";
 
 // ---------------------------------------------------------------------------
 // 1. Uri Re-export & Augmentation
@@ -1339,6 +1341,60 @@ export function createMockExtensionContext(): any {
       exports: {},
       activate: async () => {},
     },
+  };
+}
+
+export function resolveDocName(filePath: string, sourceRoot: string): string {
+  const absPath = path.resolve(filePath);
+  const content = syncFs.existsSync(absPath) ? syncFs.readFileSync(absPath, "utf8") : "";
+
+  // 1. Check for explicit Class / Routine header
+  const classMatch = content.match(/^[ \t]*Class[ \t]+([A-Za-z0-9_.]+(?:\.[A-Za-z0-9_]+)*)/im);
+  if (classMatch && classMatch[1]) {
+    return `${classMatch[1]}.cls`;
+  }
+
+  const routineMatch = content.match(/^[ \t]*ROUTINE[ \t]+([A-Za-z0-9_]+)/im);
+  if (routineMatch && routineMatch[1]) {
+    const ext = path.extname(filePath).toLowerCase();
+    return `${routineMatch[1]}${ext || ".mac"}`;
+  }
+
+  // 2. Relative path fallback
+  const rel = path.relative(path.resolve(sourceRoot), absPath);
+  const extName = path.extname(rel);
+  const noExt = rel.slice(0, -extName.length);
+  const parts = noExt.split(path.sep);
+
+  const catFolder = parts[0]?.toLowerCase();
+  if (
+    parts.length > 1 &&
+    (
+      ([".mac", ".inc", ".int"].includes(extName) && ["routines", "mac", "inc", "rtn"].includes(catFolder)) ||
+      (extName === ".cls" && catFolder === "cls")
+    )
+  ) {
+    parts.shift();
+  }
+
+  return parts.join(".").replace(/\.+/g, ".").replace(/^\.+/, "");
+}
+
+export function createTextFileForPath(filePath: string, sourceRoot: string): CurrentTextFile {
+  const absPath = path.resolve(filePath);
+  const content = syncFs.readFileSync(absPath, "utf8");
+  const uri = Uri.file(absPath);
+  const docName = resolveDocName(absPath, sourceRoot);
+  const isCrlf = content.includes("\r\n");
+
+  return {
+    content,
+    fileName: absPath,
+    uri,
+    workspaceFolder: path.basename(process.cwd()),
+    name: docName,
+    uniqueId: `${path.basename(process.cwd())}:${docName}`,
+    eol: isCrlf ? EndOfLine.CRLF : EndOfLine.LF,
   };
 }
 

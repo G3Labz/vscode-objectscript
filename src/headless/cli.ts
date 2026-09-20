@@ -29,6 +29,7 @@ import {
   EndOfLine,
   setHeadlessCwd,
   CancellationTokenSource,
+  createTextFileForPath,
 } from "./vscode-shim";
 import * as ext from "../extension";
 import { logger } from "./terminalLogger";
@@ -56,6 +57,7 @@ import {
   generateLaunchdPlist,
 } from "./daemon";
 import { AtelierWebSocketStreamer } from "./wsStream";
+import { IrisSyncMcpServer } from "./mcpServer";
 
 // ---------------------------------------------------------------------------
 // Bootstrap Runtime Shim & Upstream Extension Context
@@ -126,24 +128,6 @@ export function resolveDocName(filePath: string, sourceRoot: string): string {
   }
 
   return parts.join(".").replace(/\.+/g, ".").replace(/^\.+/, "");
-}
-
-export function createTextFileForPath(filePath: string, sourceRoot: string): CurrentTextFile {
-  const absPath = path.resolve(filePath);
-  const content = fs.readFileSync(absPath, "utf8");
-  const uri = Uri.file(absPath);
-  const docName = resolveDocName(absPath, sourceRoot);
-  const isCrlf = content.includes("\r\n");
-
-  return {
-    content,
-    fileName: absPath,
-    uri,
-    workspaceFolder: path.basename(process.cwd()),
-    name: docName,
-    uniqueId: `${path.basename(process.cwd())}:${docName}`,
-    eol: isCrlf ? EndOfLine.CRLF : EndOfLine.LF,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -662,6 +646,27 @@ program
     process.exit(1);
   }
 });
+
+// --- MCP ---
+program
+  .command("mcp")
+  .description("Run integrated Model Context Protocol (MCP) server over stdio for AI coding agents (Milestone M3.1)")
+  .action(async () => {
+    const globalOpts = program.opts();
+    const config = bootstrapEnvironment({
+      profile: globalOpts.profile,
+      server: globalOpts.server,
+      namespace: globalOpts.namespace,
+      host: globalOpts.host,
+      port: globalOpts.port,
+      user: globalOpts.user,
+      password: globalOpts.password,
+      insecure: globalOpts.insecure,
+    });
+
+    const mcpServer = new IrisSyncMcpServer(config);
+    mcpServer.start();
+  });
 
 // --- PING ---
 program
