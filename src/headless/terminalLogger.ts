@@ -3,14 +3,32 @@
  * Standalone terminal streaming implementation of vscode.OutputChannel.
  */
 
+let quietStdout = false;
+
+export function setQuietStdout(quiet: boolean): void {
+  quietStdout = quiet;
+}
+
+export function isQuietStdout(): boolean {
+  return quietStdout;
+}
+
 export class TerminalOutputChannel {
   constructor(public readonly name: string) {}
 
   public append(value: string): void {
-    process.stdout.write(value);
+    if (quietStdout) {
+      process.stderr.write(value);
+    } else {
+      process.stdout.write(value);
+    }
   }
 
   public appendLine(value: string): void {
+    if (quietStdout) {
+      process.stderr.write(`[${this.name}] ${value}\n`);
+      return;
+    }
     if (value.startsWith("[ERROR]") || value.includes("Compile error")) {
       console.error(`\x1b[31m[${this.name}] ${value}\x1b[0m`);
     } else if (value.startsWith("[WARN]")) {
@@ -32,13 +50,37 @@ export class TerminalOutputChannel {
 }
 
 export const logger = {
-  info: (msg: string) => console.log(`\x1b[32m[INFO]\x1b[0m ${msg}`),
-  warn: (msg: string) => console.warn(`\x1b[33m[WARN]\x1b[0m ${msg}`),
-  error: (msg: string) => console.error(`\x1b[31m[ERROR]\x1b[0m ${msg}`),
-  debug: (msg: string) => {
-    if (process.env.DEBUG || process.env.IRIS_DEBUG) {
-      console.log(`\x1b[36m[DEBUG]\x1b[0m ${msg}`);
+  info: (msg: string) => {
+    if (quietStdout) {
+      process.stderr.write(`\x1b[32m[INFO]\x1b[0m ${msg}\n`);
+    } else {
+      console.log(`\x1b[32m[INFO]\x1b[0m ${msg}`);
     }
   },
-  success: (msg: string) => console.log(`\x1b[32m[PASS]\x1b[0m ${msg}`),
+  warn: (msg: string) => {
+    if (quietStdout) {
+      process.stderr.write(`\x1b[33m[WARN]\x1b[0m ${msg}\n`);
+    } else {
+      console.warn(`\x1b[33m[WARN]\x1b[0m ${msg}`);
+    }
+  },
+  error: (msg: string) => {
+    process.stderr.write(`\x1b[31m[ERROR]\x1b[0m ${msg}\n`);
+  },
+  debug: (msg: string) => {
+    if (process.env.DEBUG || process.env.IRIS_DEBUG) {
+      if (quietStdout) {
+        process.stderr.write(`\x1b[36m[DEBUG]\x1b[0m ${msg}\n`);
+      } else {
+        console.log(`\x1b[36m[DEBUG]\x1b[0m ${msg}`);
+      }
+    }
+  },
+  success: (msg: string) => {
+    if (quietStdout) {
+      process.stderr.write(`\x1b[32m[PASS]\x1b[0m ${msg}\n`);
+    } else {
+      console.log(`\x1b[32m[PASS]\x1b[0m ${msg}`);
+    }
+  },
 };

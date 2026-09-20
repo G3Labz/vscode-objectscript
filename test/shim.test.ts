@@ -13,6 +13,13 @@ import * as path from "path";
 import { execSync } from "child_process";
 import * as vscodeShim from "../src/headless/vscode-shim";
 import { stripJsonc, parseJsoncSafe, readJsonSafe, setSettingPreservingJsonc, resolveConfigForFile, resolveConfiguration } from "../src/headless/configBridge";
+import {
+  parseCompilerDiagnostics,
+  parseErrorLine,
+  formatJsonReport,
+  formatSarifReport,
+  DiagnosticCollector,
+} from "../src/headless/diagnostics";
 
 const {
   Uri,
@@ -725,6 +732,86 @@ async function runTests() {
         proc.stdin.write(`Content-Length: ${Buffer.byteLength(toolsMsg)}\r\n\r\n${toolsMsg}`);
       }, 100);
     });
+  });
+
+  // -------------------------------------------------------------------------
+  // Group 14: Structured Diagnostic Reporting (Milestone M3.2 - SARIF & JSON)
+  // -------------------------------------------------------------------------
+  console.log("\nSuite 14: Structured Diagnostic Reporting Engine (Milestone M3.2)");
+
+  await it("parseErrorLine parses error code, line number, offset and message correctly", () => {
+    const raw = "ERROR #5462: Syntax error at line 42 offset 10: [ unexpected identifier ]";
+    const diag = parseErrorLine(raw, "User.Test.cls", "/workspace/src/User/Test.cls");
+    assert.ok(diag);
+    assert.strictEqual(diag.severity, "error");
+    assert.strictEqual(diag.code, "ERROR #5462");
+    assert.strictEqual(diag.line, 42);
+    assert.strictEqual(diag.column, 10);
+    assert.strictEqual(diag.document, "User.Test.cls");
+    assert.strictEqual(diag.file, "/workspace/src/User/Test.cls");
+  });
+
+  await it("formatJsonReport formats summary and structured diagnostics compliant with schema", () => {
+    const diags = parseCompilerDiagnostics(
+      [
+        { line: 12, offset: 4, code: "5001", text: "Property invalid" },
+        "WARNING #1002: Deprecated syntax at line 5 offset 1",
+      ],
+      "User.Patient.cls",
+      "/path/to/User/Patient.cls"
+    );
+    assert.strictEqual(diags.length, 2);
+    assert.strictEqual(diags[0].severity, "error");
+    assert.strictEqual(diags[1].severity, "warning");
+
+    const report = formatJsonReport(diags, {
+      totalFiles: 1,
+      compiled: 0,
+      errors: 1,
+      warnings: 1,
+      durationMs: 120,
+    });
+
+    assert.strictEqual(report.version, "1.0.0");
+    assert.strictEqual(report.success, false);
+    assert.strictEqual(report.summary.errors, 1);
+    assert.strictEqual(report.summary.warnings, 1);
+    assert.strictEqual(report.diagnostics.length, 2);
+  });
+
+  await it("formatSarifReport produces OASIS SARIF v2.1.0 compliant document", () => {
+    const diags = parseCompilerDiagnostics(
+      ["ERROR #5462: Syntax error at line 15 offset 8: invalid symbol"],
+      "User.Test.cls",
+      path.resolve("src/User/Test.cls")
+    );
+
+    const sarif = formatSarifReport(diags);
+    assert.strictEqual(sarif.version, "2.1.0");
+    assert.strictEqual(sarif.$schema, "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json");
+    assert.strictEqual(sarif.runs.length, 1);
+    assert.strictEqual(sarif.runs[0].tool.driver.name, "iris-sync");
+    assert.strictEqual(sarif.runs[0].results.length, 1);
+    const res = sarif.runs[0].results[0];
+    assert.strictEqual(res.ruleId, "ERROR #5462");
+    assert.strictEqual(res.level, "error");
+    assert.strictEqual(res.locations[0].physicalLocation.region?.startLine, 15);
+    assert.strictEqual(res.locations[0].physicalLocation.region?.startColumn, 8);
+  });
+
+  await it("DiagnosticCollector records success, errors, and emits file cleanly", () => {
+    const tmpOut = path.join(process.cwd(), "out", "test-diagnostics.sarif");
+    const collector = new DiagnosticCollector();
+    collector.setTotalFiles(2);
+    collector.recordSuccess(1);
+    collector.addRawErrors(["ERROR #1234: Fail at line 1 offset 1"], "Bad.cls", "/src/Bad.cls");
+    assert.strictEqual(collector.hasErrors(), true);
+
+    collector.emit("sarif", tmpOut);
+    assert.ok(fs.existsSync(tmpOut));
+    const content = JSON.parse(fs.readFileSync(tmpOut, "utf8"));
+    assert.strictEqual(content.version, "2.1.0");
+    fs.unlinkSync(tmpOut);
   });
 
   console.log("\n============================================================");

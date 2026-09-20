@@ -64,7 +64,7 @@
   - [x] `tools/iris_inspect` & `tools/iris_eval`
   - [x] `tools/iris_project_export` & `tools/iris_project_deploy`
   - [x] `resources/iris_schema`
-- [ ] **M3.2: Structured Diagnostic Reporting (`--format=json`, `--format=sarif`)**
+- [x] **M3.2: Structured Diagnostic Reporting (`--format=json`, `--format=sarif`)**
 - [ ] **M3.3: Headless `%UnitTest` Test Runner (`iris-sync test` with JUnit XML & TAP)**
 
 ---
