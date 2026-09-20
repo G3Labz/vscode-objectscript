@@ -526,6 +526,106 @@ async function runTests() {
     assert.strictEqual(out.trim(), "");
   });
 
+  // -------------------------------------------------------------------------
+  // Group 10: Studio Project Parity & Daemon Management
+  // -------------------------------------------------------------------------
+  console.log("\nSuite 10: Studio Project Parity & Daemon Subsystems");
+
+  await it("iris-sync project --help lists all project management commands", () => {
+    const out = execSync(`node "${binPath}" project --help`, { encoding: "utf8" });
+    assert.ok(out.includes("list"));
+    assert.ok(out.includes("create"));
+    assert.ok(out.includes("add"));
+    assert.ok(out.includes("remove"));
+    assert.ok(out.includes("show"));
+    assert.ok(out.includes("sync-manifest"));
+    assert.ok(out.includes("export"));
+    assert.ok(out.includes("deploy"));
+  });
+
+  await it("iris-sync compile and watch list --project option", () => {
+    const compileHelp = execSync(`node "${binPath}" compile --help`, { encoding: "utf8" });
+    assert.ok(compileHelp.includes("--project"));
+
+    const watchHelp = execSync(`node "${binPath}" watch --help`, { encoding: "utf8" });
+    assert.ok(watchHelp.includes("--project"));
+  });
+
+  await it("Project manifest lifecycle: create, add, show, list, and remove", () => {
+    const testDir = path.resolve("/tmp/iris-project-lifecycle-test");
+    fs.mkdirSync(testDir, { recursive: true });
+    try {
+      // 1. Create project
+      const createOut = execSync(`node "${binPath}" project create BillingService --desc "Test Billing"`, {
+        cwd: testDir,
+        encoding: "utf8",
+      });
+      assert.ok(createOut.includes("Created project manifest"));
+
+      const manifestPath = path.join(testDir, ".iris-sync/projects/BillingService.json");
+      assert.ok(fs.existsSync(manifestPath));
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      assert.strictEqual(manifest.name, "BillingService");
+      assert.strictEqual(manifest.description, "Test Billing");
+      assert.strictEqual(manifest.serverProject, "BillingService.PRJ");
+
+      // 2. Add items
+      const addOut = execSync(`node "${binPath}" project add BillingService src/cls/Invoice.cls src/mac/BILL.mac`, {
+        cwd: testDir,
+        encoding: "utf8",
+      });
+      assert.ok(addOut.includes("Total items: 2"));
+
+      const updated = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      assert.strictEqual(updated.items.length, 2);
+
+      // 3. Show project
+      const showOut = execSync(`node "${binPath}" project show BillingService`, {
+        cwd: testDir,
+        encoding: "utf8",
+      });
+      assert.ok(showOut.includes("Project: BillingService"));
+      assert.ok(showOut.includes("Tracked Files:   2"));
+
+      // 4. List projects
+      const listOut = execSync(`node "${binPath}" project list`, {
+        cwd: testDir,
+        encoding: "utf8",
+      });
+      assert.ok(listOut.includes("BillingService (2 items)"));
+
+      // 5. Remove item
+      const removeOut = execSync(`node "${binPath}" project remove BillingService src/mac/BILL.mac`, {
+        cwd: testDir,
+        encoding: "utf8",
+      });
+      assert.ok(removeOut.includes("Remaining items: 1"));
+
+      const finalManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      assert.strictEqual(finalManifest.items.length, 1);
+      assert.strictEqual(finalManifest.items[0], "src/cls/Invoice.cls");
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  await it("iris-sync daemon --help and install unit generators output valid service configs", () => {
+    const helpOut = execSync(`node "${binPath}" daemon --help`, { encoding: "utf8" });
+    assert.ok(helpOut.includes("start"));
+    assert.ok(helpOut.includes("status"));
+    assert.ok(helpOut.includes("stop"));
+    assert.ok(helpOut.includes("install"));
+
+    const systemdOut = execSync(`node "${binPath}" daemon install --systemd`, { encoding: "utf8" });
+    assert.ok(systemdOut.includes("[Unit]"));
+    assert.ok(systemdOut.includes("ExecStart="));
+    assert.ok(systemdOut.includes("iris-sync.service"));
+
+    const launchdOut = execSync(`node "${binPath}" daemon install --launchd`, { encoding: "utf8" });
+    assert.ok(launchdOut.includes("<key>Label</key>"));
+    assert.ok(launchdOut.includes("com.g3labz.iris-sync"));
+  });
+
   console.log("\n============================================================");
   console.log(` Test Summary: ${testsPassed} passed, ${testsFailed} failed`);
   console.log("============================================================\n");

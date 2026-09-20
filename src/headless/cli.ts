@@ -27,10 +27,33 @@ import {
   createMockExtensionContext,
   EndOfLine,
   setHeadlessCwd,
+  CancellationTokenSource,
 } from "./vscode-shim";
 import * as ext from "../extension";
 import { logger } from "./terminalLogger";
 import { getIrisSyncVersions } from "./version";
+import {
+  IrisProjectManifest,
+  listProjectManifests,
+  loadProjectManifest,
+  createProjectManifest,
+  addItemsToProject,
+  removeItemsFromProject,
+  saveProjectManifest,
+  queryServerProjects,
+  queryServerProjectItems,
+  syncProjectManifestWithServer,
+  exportProjectToXml,
+  exportProjectToUdl,
+  itemToDocName,
+} from "./projectManifest";
+import {
+  isDaemonRunning,
+  startDaemon,
+  stopDaemon,
+  generateSystemdService,
+  generateLaunchdPlist,
+} from "./daemon";
 
 // ---------------------------------------------------------------------------
 // Bootstrap Runtime Shim & Upstream Extension Context
@@ -258,6 +281,7 @@ program
 program
   .command("compile [files...]")
   .description("Synchronize and compile one or more local files immediately")
+  .option("-p, --project <name>", "Compile files tracked by named project manifest (.iris-sync/projects/<name>.json)")
   .option("-f, --force", "Force overwrite of server copy (bypasses 409 conflict checks)")
   .option("--flags <flags>", "Compiler flags (e.g., cuk, cukd)")
   .option("--no-compile", "Upload documents without triggering compiler")
@@ -275,8 +299,19 @@ program
       insecure: globalOpts.insecure,
     });
 
+    if (cmdOptions.project) {
+      const manifest = loadProjectManifest(cmdOptions.project);
+      if (!manifest) {
+        logger.error(`Project manifest '${cmdOptions.project}' not found in .iris-sync/projects/`);
+        process.exit(1);
+      }
+      logger.info(`[PROJECT] Scoping compilation to project '${manifest.name}' (${manifest.items.length} items)...`);
+      const projectFiles = manifest.items.map((i) => path.resolve(process.cwd(), i));
+      files = [...(files || []), ...projectFiles];
+    }
+
     if (!files || files.length === 0) {
-      logger.error("No files specified to compile. Provide file path(s) or use 'iris-sync build --all'.");
+      logger.error("No files specified to compile. Provide file path(s), use 'iris-sync build --all', or specify '--project <name>'.");
       process.exit(1);
     }
 
@@ -293,6 +328,7 @@ program
 program
   .command("watch")
   .description("Start continuous filesystem watcher and auto-compile changed files")
+  .option("-p, --project <name>", "Scope watcher exclusively to files in named project manifest")
   .option("--dir <dir>", "Directory to monitor (default: src/)")
   .option("--flags <flags>", "Compiler flags (e.g., cuk)")
   .option("--conflict <policy>", "Conflict policy: fail | overwrite | pull | diff")
@@ -354,6 +390,19 @@ program
     console.log(` Conflict Policy: ${config.conflictPolicy} | Flags: ${config.compileFlags}`);
     console.log("============================================================\n");
 
+    let projectItemPaths: Set<string> | null = null;
+    if (cmdOptions.project) {
+      const manifest = loadProjectManifest(cmdOptions.project);
+      if (!manifest) {
+        logger.error(`Project manifest '${cmdOptions.project}' not found in .iris-sync/projects/`);
+        process.exit(1);
+      }
+      logger.info(`[PROJECT] Scoping watcher exclusively to project '${manifest.name}' (${manifest.items.length} items)...`);
+      projectItemPaths = new Set(
+        manifest.items.map((i) => path.resolve(process.cwd(), i).replace(/\\/g, "/").toLowerCase())
+      );
+    }
+
     const mtimes = new Map<string, number>();
     const semanticHashes = new Map<string, string>();
 
@@ -376,7 +425,12 @@ program
           return results;
         };
 
-        const currentFiles = walk(watchDir);
+        let currentFiles = walk(watchDir);
+        if (projectItemPaths) {
+          currentFiles = currentFiles.filter((f) =>
+            projectItemPaths!.has(path.resolve(f).replace(/\\/g, "/").toLowerCase())
+          );
+        }
         for (const file of currentFiles) {
           const stat = fs.statSync(file);
           const lastMtime = mtimes.get(file);
@@ -1124,6 +1178,344 @@ program
       logger.success(`Reconciled ${Object.keys(merged).length} servers across ${path.basename(serversFile)} and ${path.basename(vsCodeFile)}`);
     } else {
       logger.info(`Unknown config action: ${act}. Supported actions: sync, export`);
+    }
+  });
+
+// --- PROJECT ---
+const projectCmd = program
+  .command("project")
+  .description("Manage local Studio Project manifests (.iris-sync/projects/) and remote %Studio.Project synchronization");
+
+projectCmd
+  .command("list")
+  .description("List locally configured projects and optionally remote server projects")
+  .option("--remote", "Query remote server %Studio.Project catalog")
+  .action(async (cmdOptions: any) => {
+    const manifests = listProjectManifests();
+    if (manifests.length === 0) {
+      logger.info("No local project manifests found in ./.iris-sync/projects/");
+    } else {
+      console.log("\nLocal Project Manifests (.iris-sync/projects/):");
+      for (const m of manifests) {
+        console.log(`  • ${m.name} (${m.items.length} items) - ${m.description || "No description"}`);
+      }
+    }
+
+    if (cmdOptions.remote) {
+      const globalOpts = program.opts();
+      const config = bootstrapEnvironment({
+        profile: globalOpts.profile,
+        server: globalOpts.server,
+        namespace: globalOpts.namespace,
+        host: globalOpts.host,
+        port: globalOpts.port,
+        user: globalOpts.user,
+        password: globalOpts.password,
+        insecure: globalOpts.insecure,
+      });
+      const api = new AtelierAPI();
+      logger.info(`Querying %Studio.Project catalog from ${api.ns} on ${config.serverName}...`);
+      const remoteProjects = await queryServerProjects(api);
+      if (remoteProjects.length === 0) {
+        logger.info("No projects found on remote server.");
+      } else {
+        console.log(`\nRemote Server Projects (${api.ns} @ ${config.serverName}):`);
+        for (const rp of remoteProjects) {
+          console.log(`  • ${rp.name} - ${rp.description || "No description"}`);
+        }
+      }
+    }
+  });
+
+projectCmd
+  .command("create <name>")
+  .description("Create a new project manifest in ./.iris-sync/projects/<name>.json")
+  .option("-d, --desc <description>", "Human-readable project description")
+  .option("--server-prj <name>", "Corresponding server project document name")
+  .option("--ns <namespace>", "Target database namespace for synchronization")
+  .option("--format <format>", "Default export format: xml | udl", "xml")
+  .action(async (name: string, cmdOptions: any) => {
+    try {
+      const created = createProjectManifest(name, {
+        description: cmdOptions.desc,
+        serverProject: cmdOptions.serverPrj,
+        targetNamespace: cmdOptions.ns,
+        exportFormat: cmdOptions.format,
+      });
+      logger.success(`Created project manifest for '${created.name}' at .iris-sync/projects/${created.name}.json`);
+    } catch (err: any) {
+      logger.error(`Failed to create project manifest: ${err?.message || err}`);
+      process.exit(1);
+    }
+  });
+
+projectCmd
+  .command("add <name> <files...>")
+  .description("Add one or more files or classes to a project manifest")
+  .action(async (name: string, files: string[]) => {
+    try {
+      const updated = addItemsToProject(name, files);
+      logger.success(`Added items to project '${name}'. Total items: ${updated.items.length}`);
+    } catch (err: any) {
+      logger.error(`Failed to add items to project '${name}': ${err?.message || err}`);
+      process.exit(1);
+    }
+  });
+
+projectCmd
+  .command("remove <name> <files...>")
+  .description("Remove one or more files or classes from a project manifest")
+  .action(async (name: string, files: string[]) => {
+    try {
+      const updated = removeItemsFromProject(name, files);
+      logger.success(`Removed items from project '${name}'. Remaining items: ${updated.items.length}`);
+    } catch (err: any) {
+      logger.error(`Failed to remove items from project '${name}': ${err?.message || err}`);
+      process.exit(1);
+    }
+  });
+
+projectCmd
+  .command("show <name>")
+  .description("Show details and file inventory of a project manifest")
+  .action(async (name: string) => {
+    const manifest = loadProjectManifest(name);
+    if (!manifest) {
+      logger.error(`Project '${name}' not found in .iris-sync/projects/`);
+      process.exit(1);
+    }
+    console.log("============================================================");
+    console.log(` Project: ${manifest.name}`);
+    console.log(` Description:     ${manifest.description || "None"}`);
+    console.log(` Server Document: ${manifest.serverProject || manifest.name + ".PRJ"}`);
+    console.log(` Target NS:       ${manifest.targetNamespace || "Default"}`);
+    console.log(` Export Format:   ${manifest.exportFormat || "xml"}`);
+    console.log(` Tracked Files:   ${manifest.items.length}`);
+    console.log("============================================================");
+    for (const item of manifest.items) {
+      const absPath = path.resolve(process.cwd(), item);
+      const exists = fs.existsSync(absPath) ? "✓" : "✗ (missing)";
+      const doc = itemToDocName(item);
+      console.log(`  [${exists}] ${item} -> ${doc}`);
+    }
+    console.log("");
+  });
+
+projectCmd
+  .command("sync-manifest <name>")
+  .description("Synchronize project definition with server %Studio.Project")
+  .option("--direction <direction>", "Direction: local-to-server | server-to-local | bidirectional", "bidirectional")
+  .action(async (name: string, cmdOptions: any) => {
+    const manifest = loadProjectManifest(name);
+    if (!manifest) {
+      logger.error(`Project manifest '${name}' not found.`);
+      process.exit(1);
+    }
+    const globalOpts = program.opts();
+    const config = bootstrapEnvironment({
+      profile: globalOpts.profile,
+      server: globalOpts.server,
+      namespace: manifest.targetNamespace || globalOpts.namespace,
+      host: globalOpts.host,
+      port: globalOpts.port,
+      user: globalOpts.user,
+      password: globalOpts.password,
+      insecure: globalOpts.insecure,
+    });
+    const api = new AtelierAPI();
+    logger.info(`[SYNC-PROJECT] Synchronizing project '${name}' with server namespace ${api.ns}...`);
+    try {
+      const res = await syncProjectManifestWithServer(manifest, api, cmdOptions.direction);
+      logger.success(`Project '${name}' manifest synchronized:`);
+      logger.info(`  • Items added to local manifest:  +${res.addedToLocal.length}`);
+      logger.info(`  • Items registered on IRIS server: +${res.addedToServer.length}`);
+    } catch (err: any) {
+      logger.error(`Failed to synchronize project manifest: ${err?.message || err}`);
+      process.exit(1);
+    }
+  });
+
+projectCmd
+  .command("export <name>")
+  .description("Export project items into a deployable XML or UDL package")
+  .requiredOption("-o, --output <path>", "Destination file (for xml) or folder (for udl)")
+  .option("--format <format>", "Package format: xml | udl", "xml")
+  .action(async (name: string, cmdOptions: any) => {
+    const manifest = loadProjectManifest(name);
+    if (!manifest) {
+      logger.error(`Project manifest '${name}' not found.`);
+      process.exit(1);
+    }
+    const globalOpts = program.opts();
+    const config = bootstrapEnvironment({
+      profile: globalOpts.profile,
+      server: globalOpts.server,
+      namespace: manifest.targetNamespace || globalOpts.namespace,
+      host: globalOpts.host,
+      port: globalOpts.port,
+      user: globalOpts.user,
+      password: globalOpts.password,
+      insecure: globalOpts.insecure,
+    });
+    const api = new AtelierAPI();
+    const format = (cmdOptions.format || manifest.exportFormat || "xml").toLowerCase();
+    try {
+      if (format === "xml") {
+        const out = await exportProjectToXml(manifest, api, cmdOptions.output);
+        logger.success(`Exported project '${name}' as XML package to: ${out}`);
+      } else if (format === "udl") {
+        const out = await exportProjectToUdl(manifest, api, cmdOptions.output);
+        logger.success(`Exported ${out.length} project items to UDL directory: ${cmdOptions.output}`);
+      } else {
+        logger.error(`Unsupported export format: ${format}. Use 'xml' or 'udl'.`);
+        process.exit(1);
+      }
+    } catch (err: any) {
+      logger.error(`Failed to export project '${name}': ${err?.message || err}`);
+      process.exit(1);
+    }
+  });
+
+projectCmd
+  .command("deploy <name>")
+  .description("Deploy/promote project files directly to a target server and compile")
+  .option("-t, --target <server>", "Target server name from .iris-sync/servers.json")
+  .option("-n, --namespace <ns>", "Target database namespace")
+  .option("--compile", "Trigger compilation after upload", true)
+  .option("--no-compile", "Upload documents without compilation")
+  .option("--flags <flags>", "Compiler flags (default: cuk)", "cuk")
+  .action(async (name: string, cmdOptions: any) => {
+    const manifest = loadProjectManifest(name);
+    if (!manifest) {
+      logger.error(`Project manifest '${name}' not found.`);
+      process.exit(1);
+    }
+    const globalOpts = program.opts();
+    const targetServer = cmdOptions.target || globalOpts.server;
+    const targetNs = cmdOptions.namespace || manifest.targetNamespace || globalOpts.namespace;
+
+    const config = bootstrapEnvironment({
+      server: targetServer,
+      namespace: targetNs,
+      host: globalOpts.host,
+      port: globalOpts.port,
+      user: globalOpts.user,
+      password: globalOpts.password,
+      flags: cmdOptions.flags,
+      insecure: globalOpts.insecure,
+    });
+
+    const api = new AtelierAPI();
+    logger.info(`[DEPLOY] Promoting project '${name}' (${manifest.items.length} items) to server '${config.serverName}' (namespace ${api.ns})...`);
+
+    let uploaded = 0;
+    const docsToCompile: string[] = [];
+
+    for (const item of manifest.items) {
+      const absPath = path.resolve(process.cwd(), item);
+      if (!fs.existsSync(absPath)) {
+        logger.warn(`Skipping missing local file: ${item}`);
+        continue;
+      }
+      const ok = await syncAndCompileFile(absPath, config, true, true);
+      if (ok) {
+        uploaded++;
+        docsToCompile.push(itemToDocName(item));
+      }
+    }
+
+    logger.info(`Uploaded ${uploaded}/${manifest.items.length} project items.`);
+
+    if (cmdOptions.compile && docsToCompile.length > 0) {
+      logger.info(`Compiling ${docsToCompile.length} project documents...`);
+      try {
+        const cts = new CancellationTokenSource();
+        const res = await api.asyncCompile(docsToCompile, cts.token, cmdOptions.flags || config.compileFlags);
+        if (res.status && res.status.errors && res.status.errors.length) {
+          logger.error(`Compilation finished with errors on target server.`);
+          process.exit(1);
+        } else {
+          logger.success(`Project '${name}' compiled cleanly on '${config.serverName}' (${api.ns}).`);
+        }
+      } catch (err: any) {
+        logger.error(`Compilation error: ${err?.message || err}`);
+        process.exit(1);
+      }
+    } else {
+      logger.success(`Project '${name}' deployed successfully.`);
+    }
+  });
+
+// --- DAEMON ---
+const daemonCmd = program
+  .command("daemon")
+  .description("Manage background iris-sync service daemon and OS service unit generation");
+
+daemonCmd
+  .command("start")
+  .description("Start continuous filesystem watcher as a background daemon process")
+  .option("--dir <dir>", "Directory to monitor")
+  .option("--flags <flags>", "Compiler flags (e.g., cuk)")
+  .option("--conflict <policy>", "Conflict policy: fail | overwrite | pull | diff")
+  .option("--coexist", "Tune VS Code extension into vscodeOnly coexistence mode")
+  .action((cmdOptions: any) => {
+    const globalOpts = program.opts();
+    const res = startDaemon({
+      dir: cmdOptions.dir,
+      flags: cmdOptions.flags,
+      conflict: cmdOptions.conflict,
+      coexist: cmdOptions.coexist,
+      server: globalOpts.server,
+      namespace: globalOpts.namespace,
+    });
+    if (res.success) {
+      logger.success(res.message!);
+    } else {
+      logger.error(res.message!);
+      process.exit(1);
+    }
+  });
+
+daemonCmd
+  .command("status")
+  .description("Check the running status of the background daemon")
+  .action(() => {
+    const status = isDaemonRunning();
+    if (status.running) {
+      logger.success(`Daemon is running (PID: ${status.pid}).`);
+    } else {
+      logger.info("Daemon is not running.");
+    }
+  });
+
+daemonCmd
+  .command("stop")
+  .description("Stop the running background daemon")
+  .action(() => {
+    const res = stopDaemon();
+    if (res.success) {
+      logger.success(res.message);
+    } else {
+      logger.warn(res.message);
+    }
+  });
+
+daemonCmd
+  .command("install")
+  .description("Generate OS service unit configuration for persistent startup")
+  .option("--systemd", "Generate Linux systemd user service unit")
+  .option("--launchd", "Generate macOS launchd agent plist")
+  .action((cmdOptions: any) => {
+    if (cmdOptions.launchd) {
+      const plist = generateLaunchdPlist();
+      console.log("\n--- macOS launchd Agent plist (~/Library/LaunchAgents/com.g3labz.iris-sync.plist) ---");
+      console.log(plist);
+      logger.info("Save to ~/Library/LaunchAgents/com.g3labz.iris-sync.plist and load via: launchctl load ~/Library/LaunchAgents/com.g3labz.iris-sync.plist");
+    } else {
+      const unit = generateSystemdService();
+      console.log("\n--- Linux systemd User Service Unit (~/.config/systemd/user/iris-sync.service) ---");
+      console.log(unit);
+      logger.info("Save to ~/.config/systemd/user/iris-sync.service and enable via: systemctl --user enable --now iris-sync");
     }
   });
 

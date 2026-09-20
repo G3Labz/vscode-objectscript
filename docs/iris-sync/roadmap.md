@@ -34,20 +34,21 @@
 ---
 
 ### Phase 2: Studio Projects, Daemonization & Streaming (Current Phase)
-- [/] **M2.5: Studio Project Parity (`iris-sync project`)**
+- [x] **M2.5: Studio Project Parity (`iris-sync project`)**
   - [x] Draft-07 project schema definition (`schemas/irisproject.schema.json`)
-  - [/] Local-first manifest tracking (`.iris-sync/projects/<name>.json`)
-  - [ ] Project management CLI (`project list`, `project create`, `project add`, `project remove`)
-  - [ ] Server `%Studio.Project` manifest bi-directional synchronization
-  - [ ] Project-scoped compilation (`iris-sync compile --project <name>`)
-  - [ ] Project-scoped file watching (`iris-sync watch --project <name>`)
-  - [ ] Project export pipeline (XML / UDL bundle export via `%SYSTEM.OBJ.Export`)
-  - [ ] Direct headless promotion / push-to-prod (`iris-sync project deploy <name> --target prod`)
-- [ ] **M2.1: Background Service Daemonization (`iris-sync daemon`)**
-  - [ ] Linux systemd user/system service generator
-  - [ ] macOS launchd daemon plist generator
-  - [ ] PID file locking (`~/.iris-sync/daemon.pid`) & graceful termination (`iris-sync daemon stop`)
-  - [ ] Rotating structured JSON & syslog log handlers
+  - [x] Local-first manifest tracking (`.iris-sync/projects/<name>.json`)
+  - [x] Project management CLI (`project list`, `project create`, `project add`, `project remove`, `project show`)
+  - [x] Server `%Studio.Project` manifest bi-directional synchronization (`project sync-manifest`)
+  - [x] Project-scoped compilation (`iris-sync compile --project <name>`)
+  - [x] Project-scoped file watching (`iris-sync watch --project <name>`)
+  - [x] Project export pipeline (XML / UDL bundle export via `%SYSTEM.OBJ.Export` / Atelier API)
+  - [x] Direct headless promotion / push-to-prod (`iris-sync project deploy <name> --target <srv> --compile`)
+- [x] **M2.1: Background Service Daemonization (`iris-sync daemon`)**
+  - [x] Linux systemd user/system service generator (`iris-sync daemon install --systemd`)
+  - [x] macOS launchd daemon plist generator (`iris-sync daemon install --launchd`)
+  - [x] PID file locking (`~/.iris-sync/daemon.pid`) & graceful termination (`iris-sync daemon stop`, `status`)
+  - [x] Detached background watcher spawning (`iris-sync daemon start`)
+  - [x] Rotating structured JSON & syslog log handlers
 - [ ] **M2.2: WebSocket Compiler Streaming (`api.atelier.websocket`)**
   - [ ] Bidirectional WebSocket client in `src/headless/`
   - [ ] Zero-polling real-time compilation console line streaming to stdout
