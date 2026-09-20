@@ -20,6 +20,12 @@ import {
   formatSarifReport,
   DiagnosticCollector,
 } from "../src/headless/diagnostics";
+import {
+  formatJunitXml,
+  formatTap,
+  formatConsoleReport,
+  UnitTestRunReport,
+} from "../src/headless/testRunner";
 
 const {
   Uri,
@@ -812,6 +818,111 @@ async function runTests() {
     const content = JSON.parse(fs.readFileSync(tmpOut, "utf8"));
     assert.strictEqual(content.version, "2.1.0");
     fs.unlinkSync(tmpOut);
+  });
+
+  // -------------------------------------------------------------------------
+  // Group 15: Headless %UnitTest Test Runner Engine (Milestone M3.3)
+  // -------------------------------------------------------------------------
+  console.log("\nSuite 15: Headless %UnitTest Runner & CI/CD Formats (Milestone M3.3)");
+
+  await it("formatJunitXml generates valid Jenkins/GitLab/GitHub Actions JUnit XML", () => {
+    const mockReport: UnitTestRunReport = {
+      version: "1.0.0",
+      tool: { name: "iris-sync", version: "0.2.3-ALPHA" },
+      summary: {
+        total: 3,
+        passed: 2,
+        failed: 1,
+        skipped: 0,
+        durationMs: 450,
+        success: false,
+      },
+      suites: [
+        {
+          name: "User.Test.CalculatorTest",
+          durationMs: 250,
+          passed: 2,
+          failed: 0,
+          skipped: 0,
+          tests: [
+            { name: "TestAdd", status: "passed", durationMs: 120 },
+            { name: "TestSubtract", status: "passed", durationMs: 130 },
+          ],
+        },
+        {
+          name: "User.Test.DatabaseTest",
+          durationMs: 200,
+          passed: 0,
+          failed: 1,
+          skipped: 0,
+          tests: [
+            {
+              name: "TestInsert",
+              status: "failed",
+              durationMs: 200,
+              error: "AssertEquals failed: Expected 1 got 0",
+              location: "User.Test.DatabaseTest.cls:45",
+            },
+          ],
+        },
+      ],
+    };
+
+    const xml = formatJunitXml(mockReport);
+    assert.ok(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>'));
+    assert.ok(xml.includes('<testsuites name="InterSystems IRIS %UnitTest" tests="3" failures="1"'));
+    assert.ok(xml.includes('<testsuite name="User.Test.CalculatorTest" tests="2" failures="0"'));
+    assert.ok(xml.includes('<testcase name="TestAdd" classname="User.Test.CalculatorTest"'));
+    assert.ok(xml.includes('<failure message="AssertEquals failed: Expected 1 got 0"'));
+    assert.ok(xml.includes('Location: User.Test.DatabaseTest.cls:45'));
+  });
+
+  await it("formatTap generates compliant Test Anything Protocol (TAP v13)", () => {
+    const mockReport: UnitTestRunReport = {
+      version: "1.0.0",
+      tool: { name: "iris-sync", version: "0.2.3-ALPHA" },
+      summary: {
+        total: 2,
+        passed: 1,
+        failed: 1,
+        skipped: 0,
+        durationMs: 150,
+        success: false,
+      },
+      suites: [
+        {
+          name: "User.Test.SampleTest",
+          durationMs: 150,
+          passed: 1,
+          failed: 1,
+          skipped: 0,
+          tests: [
+            { name: "TestOk", status: "passed", durationMs: 50 },
+            { name: "TestBad", status: "failed", durationMs: 100, error: "Condition failed" },
+          ],
+        },
+      ],
+    };
+
+    const tap = formatTap(mockReport);
+    assert.ok(tap.includes("TAP version 13"));
+    assert.ok(tap.includes("1..2"));
+    assert.ok(tap.includes("ok 1 - User.Test.SampleTest : TestOk # time=50ms"));
+    assert.ok(tap.includes("not ok 2 - User.Test.SampleTest : TestBad # time=100ms"));
+    assert.ok(tap.includes("# tests 2"));
+    assert.ok(tap.includes("# pass 1"));
+    assert.ok(tap.includes("# fail 1"));
+  });
+
+  await it("iris-sync test --help exposes test filtering and output formatting flags", () => {
+    const cliPath = path.resolve(__dirname, `../dist/cli/iris-sync-b.3.8.6-SNAPSHOT-c.0.2.3-ALPHA.js`);
+    const helpOut = execSync(`node "${cliPath}" test --help`).toString("utf8");
+    assert.ok(helpOut.includes("--package"), "Missing --package option");
+    assert.ok(helpOut.includes("--suite"), "Missing --suite option");
+    assert.ok(helpOut.includes("--case"), "Missing --case option");
+    assert.ok(helpOut.includes("--method"), "Missing --method option");
+    assert.ok(helpOut.includes("--format"), "Missing --format option");
+    assert.ok(helpOut.includes("--output-file"), "Missing --output-file option");
   });
 
   console.log("\n============================================================");

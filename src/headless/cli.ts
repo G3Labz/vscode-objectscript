@@ -59,6 +59,12 @@ import {
 import { AtelierWebSocketStreamer } from "./wsStream";
 import { IrisSyncMcpServer } from "./mcpServer";
 import { DiagnosticCollector } from "./diagnostics";
+import {
+  runUnitTests,
+  formatJunitXml,
+  formatTap,
+  formatConsoleReport,
+} from "./testRunner";
 
 // ---------------------------------------------------------------------------
 // Bootstrap Runtime Shim & Upstream Extension Context
@@ -742,6 +748,97 @@ program
 
     const mcpServer = new IrisSyncMcpServer(config);
     mcpServer.start();
+  });
+
+// --- TEST ---
+program
+  .command("test")
+  .description("Execute InterSystems IRIS %UnitTest test suites and test cases (Milestone M3.3)")
+  .option("-p, --package <pkg>", "Scope tests to package prefix (e.g., User.Test)")
+  .option("-s, --suite <suite>", "Target test suite name or folder")
+  .option("-c, --case <case>", "Target specific TestCase class name (e.g., User.Test.MyTest)")
+  .option("-m, --method <method>", "Target specific test method (e.g., TestCalculation)")
+  .option("--load <dir>", "Directory containing local test files to compile before testing")
+  .option("--format <format>", "Output format: console | junit | tap | json (default: console)", "console")
+  .option("-o, --output-file <file>", "Write test report to specified file path")
+  .action(async (cmdOptions: any) => {
+    const format = (cmdOptions.format || "console").toLowerCase();
+    const isMachine = format === "junit" || format === "tap" || format === "json";
+    if (isMachine && !cmdOptions.outputFile) {
+      setQuietStdout(true);
+    }
+
+    const globalOpts = program.opts();
+    const config = bootstrapEnvironment({
+      profile: globalOpts.profile,
+      server: globalOpts.server,
+      namespace: globalOpts.namespace,
+      host: globalOpts.host,
+      port: globalOpts.port,
+      user: globalOpts.user,
+      password: globalOpts.password,
+      insecure: globalOpts.insecure,
+    });
+
+    const dummyUri = Uri.file(path.join(process.cwd(), "dummy.cls"));
+    const api = new AtelierAPI(dummyUri);
+    api.setNamespace(config.namespace);
+
+    // If --load is specified, compile local test files first
+    if (cmdOptions.load) {
+      const loadDir = path.resolve(cmdOptions.load);
+      if (fs.existsSync(loadDir)) {
+        logger.info(`Compiling local test files from ${loadDir}...`);
+        const walk = (dir: string): string[] => {
+          let list: string[] = [];
+          for (const item of fs.readdirSync(dir)) {
+            const full = path.join(dir, item);
+            if (fs.statSync(full).isDirectory()) {
+              list = list.concat(walk(full));
+            } else if (item.endsWith(".cls")) {
+              list.push(full);
+            }
+          }
+          return list;
+        };
+        for (const file of walk(loadDir)) {
+          await syncAndCompileFile(file, config, true, false);
+        }
+      }
+    }
+
+    const report = await runUnitTests(api, config, {
+      pkg: cmdOptions.package,
+      suite: cmdOptions.suite,
+      testCase: cmdOptions.case,
+      method: cmdOptions.method,
+      format,
+    });
+
+    let outputText = "";
+    if (format === "junit") {
+      outputText = formatJunitXml(report);
+    } else if (format === "tap") {
+      outputText = formatTap(report);
+    } else if (format === "json") {
+      outputText = JSON.stringify(report, null, 2);
+    } else {
+      outputText = formatConsoleReport(report);
+    }
+
+    if (cmdOptions.outputFile) {
+      const outPath = path.resolve(cmdOptions.outputFile);
+      const outDir = path.dirname(outPath);
+      if (!fs.existsSync(outDir)) {
+        fs.mkdirSync(outDir, { recursive: true });
+      }
+      fs.writeFileSync(outPath, outputText, "utf8");
+      logger.success(`Test report written to ${cmdOptions.outputFile}`);
+    } else {
+      process.stdout.write(outputText + "\n");
+    }
+
+    process.exit(report.summary.success ? 0 : 1);
   });
 
 // --- PING ---
