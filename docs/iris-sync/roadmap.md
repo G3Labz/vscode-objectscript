@@ -75,10 +75,12 @@
 - [ ] **M4.3: Secure Credential Vault Bridge (HashiCorp Vault, AWS/GCP/Azure Secret Managers)**
 - [ ] **M4.4: Public Package Registry Publishing (`@g3labz/iris-sync` on npm)**
 - [ ] **M4.5: Interoperability Production Config Item Lifecycle & Safe BO Hot-Restart (`Ens.Director`)**
-  - [ ] Programmatic toggle: disable & re-enable via `##class(Ens.Director).EnableConfigItem("Name", 0|1)`
+  - [ ] Preferred primitive: `Do ##class(Ens.Director).RestartHost("ConfigItemName")`
+  - [ ] Production reload: `Do ##class(Ens.Director).UpdateProduction()`
+  - [ ] Fallback toggle: disable & re-enable via `##class(Ens.Director).EnableConfigItem("Name", 0|1)`
   - [ ] Strictly opt-in execution (never automatic by default) with explicit warnings regarding inflight message queues
   - [ ] Dedicated MCP tool (`tools/iris_restart_config_item`) enabling AI agents to await multi-file edits before cycling
-  - [ ] Target environment requirement: InterSystems IRIS 2023+ with IRIS Lite Terminal / Interoperability enabled
+  - [ ] Target environment requirement: InterSystems IRIS (2023+ recommended) with Interoperability enabled
 
 ---
 
@@ -355,14 +357,24 @@ Timeline Overview:
 - [ ] **M4.5: Interoperability Production Config Item Lifecycle & Safe BO Hot-Restart (`Ens.Director`)**
   - **Problem Statement (Persistent Process Caching in IRIS Interoperability)**:
     - In InterSystems IRIS Interoperability productions, Business Operations (BOs), Business Processes (BPs), and Business Services (BSs) are managed as dedicated background jobs (`Ens.Job`).
-    - When a developer or AI agent edits and compiles a Business Operation class, IRIS keeps the worker job alive in memory. The running job retains the old cached routine/class in its memory segment, continuing to execute obsolete logic until the configuration item is explicitly stopped and restarted.
-  - **Programmatic Restart Primitive**:
-    - Provide a programmatic command to cycle the target production item via the canonical `Ens.Director` API:
+    - When a developer or AI agent edits and compiles a Business Operation class, IRIS keeps the worker job alive in memory. The running job retains the old cached routine/class in its memory segment, continuing to execute obsolete logic until the host process is restarted.
+  - **Programmatic Restart Primitives**:
+    - **Host-Level Graceful Restart (Preferred)**:
+      ```objectscript
+      Do ##class(Ens.Director).RestartHost("YourBusinessOperationName")
+      ```
+      Directly restarts the specific Business Operation/Service/Process host process without toggling configuration state, spinning up a fresh worker job with the newly compiled code.
+    - **Production Reload / Refresh**:
+      ```objectscript
+      Do ##class(Ens.Director).UpdateProduction()
+      ```
+      Reloads running production items and applies updated settings and compiled code across all managed hosts.
+    - **State Toggle Fallback**:
       ```objectscript
       set tSC = ##class(Ens.Director).EnableConfigItem("YourBusinessOperationName", 0)
       set tSC = ##class(Ens.Director).EnableConfigItem("YourBusinessOperationName", 1)
       ```
-    - Toggling the config item from `0` (disabled) to `1` (enabled) cleanly terminates the existing worker process, spins up a fresh `Ens.Job`, and reloads the newly compiled code into memory.
+      Toggling the config item from `0` (disabled) to `1` (enabled) cleanly terminates the existing worker process, spins up a fresh `Ens.Job`, and reloads the newly compiled code into memory.
   - **Safety Invariant (Strictly Opt-In, Caution Advised)**:
     - > [!CAUTION]
       > **Production Risk Warning**: Hot-restarting a Business Operation while messages are actively inflight can cause message queue stalling, interrupted socket/database transactions, connection drops, or retry storms. Things can quickly "go sideways" if triggered blindly.
@@ -370,9 +382,9 @@ Timeline Overview:
     - The CLI must output clear warning prompts informing the developer of the active restart risk.
   - **AI Coding Agent Integration (MCP Tool: `tools/iris_restart_config_item`)**:
     - AI agents working on complex BO modifications often need to edit multiple methods or helper classes before the code is functionally coherent.
-    - Expose `tools/iris_restart_config_item` on the `iris-sync mcp` server. This enables the agent to complete all intermediate code adjustments, verify compiler diagnostics via `tools/iris_compile`, and only *then* programmatically invoke the restart command once the entire change set is finalized.
+    - Expose `tools/iris_restart_config_item` on the `iris-sync mcp` server. This enables the agent to complete all intermediate code adjustments, verify compiler diagnostics via `tools/iris_compile`, and only *then* programmatically invoke `RestartHost` once the entire change set is finalized.
   - **Compatibility & Platform Caveats**:
-    - Requires InterSystems IRIS (2023+ recommended) with an active Interoperability production and IRIS Lite Terminal environment supporting `%Api.Atelier` and `Ens.Director`.
+    - Requires InterSystems IRIS (2023+ recommended) with an active Interoperability production and Atelier / Lite Terminal terminal execution permissions.
 
 ---
 

@@ -4,6 +4,11 @@
 
 # InterSystems ObjectScript extension for VS Code
 
+> [!TIP]
+> **Looking for `iris-sync`?**
+> This repository also powers **`iris-sync`**, the standalone headless InterSystems IRIS synchronization & compiler engine (CLI, daemon, MCP server, and CI/CD toolchain).
+> For installation guides (bare-metal, mise, npm) and CLI usage, see [**`docs/iris-sync/README.md`**](docs/iris-sync/README.md).
+
 > **Note:** The best way to install and use this extension is by installing the [InterSystems ObjectScript Extension Pack](https://marketplace.visualstudio.com/items?itemName=intersystems-community.objectscript-pack) and following the [documentation here](https://docs.intersystems.com/components/csp/docbook/DocBook.UI.Page.cls?KEY=GVSCO).
 
 [InterSystems&reg;](http://www.intersystems.com) ObjectScript language support for Visual Studio Code, from the [InterSystems Developer Community](https://community.intersystems.com/).
