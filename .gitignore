@@ -6,8 +6,8 @@ out/
 dist/
 *.vsix
 vscode*.d.ts
-test-fixtures
 .DS_Store
+test-fixtures/.generated/
 .iris-sync-cache.json
 .iris-sync/cache.json
 .iris-sync/*.local.json
