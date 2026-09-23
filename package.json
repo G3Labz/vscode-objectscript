@@ -78,7 +78,7 @@
   "main": "./dist/extension",
   "browser": "./dist/web-extension",
   "bin": {
-    "iris-sync": "./dist/cli/iris-sync-b.3.8.6-SNAPSHOT-c.0.0.1-ALPHA.js"
+    "iris-sync": "./dist/cli/iris-sync.js"
   },
   "contributes": {
     "viewsWelcome": [

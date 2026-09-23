@@ -1513,3 +1513,63 @@ iris-sync build --all
 # Health-check connection, check version and available namespaces
 iris-sync ping --profile development
 ```
+
+### 8.3 Package Manager & Toolchain Ecosystem Integration
+
+`iris-sync` provides multiple distribution and installation channels tailored for local developer workstations, container environments, and CI/CD pipelines.
+
+#### 1. Installing with `mise` (Native `github:` Backend)
+
+`mise` can install `iris-sync` directly from GitHub releases without registering a custom backend or repository:
+
+```bash
+# Add iris-sync directly to your local or global mise environment
+mise use "github:G3Labz/vscode-objectscript"
+```
+
+In your `mise.toml`:
+
+```toml
+[tools]
+"github:G3Labz/vscode-objectscript" = { version = "latest", prerelease = true, bin = "iris-sync" }
+```
+
+- **`bin = "iris-sync"`**: Directs `mise` to expose the compiled standalone binary as `iris-sync` on your `$PATH`.
+- **`prerelease = true`**: Enables `mise` to track and resolve active developmental and pre-release builds.
+
+#### 2. Registering as a Custom Mise / ASDF Plugin
+
+For teams managing tools via explicit plugin definitions, declare the plugin under the `[plugins]` block in `mise.toml`:
+
+```toml
+[plugins]
+iris-sync = "https://github.com/G3Labz/vscode-objectscript.git"
+
+[tools]
+iris-sync = "latest"
+```
+
+The repository bundles standard `bin/list-all`, `bin/download`, and `bin/install` scripts (`plugins/asdf-iris-sync/`) compatible with both `mise` and `asdf`.
+
+#### 3. Installing Globally via `npm` / Git
+
+`iris-sync` exposes a canonical binary entrypoint (`dist/cli/iris-sync.js`) in its package manifest:
+
+```bash
+# Install directly from the GitHub repository into global node_modules
+npm install -g github:G3Labz/vscode-objectscript
+
+# Execute anywhere
+iris-sync --version
+```
+
+#### 4. Standalone Zero-Dependency Native Binaries
+
+Precompiled native Single Executable Application (SEA) binaries and compressed archives (`iris-sync-<os>-<arch>.tar.gz`) are attached to each GitHub release:
+
+```bash
+# Example: Download and install Linux x64 binary directly
+curl -sSL "https://github.com/G3Labz/vscode-objectscript/releases/latest/download/iris-sync-linux-x64.tar.gz" | tar -xz -C /usr/local/bin/
+chmod +x /usr/local/bin/iris-sync
+```
+

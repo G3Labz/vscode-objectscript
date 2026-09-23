@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+install_path="${ASDF_INSTALL_PATH}"
+mkdir -p "${install_path}/bin"
+
+cp "${ASDF_DOWNLOAD_PATH}/iris-sync" "${install_path}/bin/iris-sync"
+chmod +x "${install_path}/bin/iris-sync"
+
+echo "iris-sync ${ASDF_INSTALL_VERSION} successfully installed to ${install_path}/bin/iris-sync"

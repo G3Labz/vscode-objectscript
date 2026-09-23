@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Query GitHub API for all released tags
+curl -sSL "https://api.github.com/repos/G3Labz/vscode-objectscript/releases" | \
+  grep -Po '"tag_name":\s*"\K[^"]*' | \
+  grep '^b\.' | \
+  sort -V

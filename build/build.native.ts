@@ -58,14 +58,38 @@ export async function buildNativeBinary(): Promise<{ binaryPath: string; version
   fs.copyFileSync(targetPath, versionedPath);
   fs.chmodSync(versionedPath, 0o755);
 
+  // Step 7: Package compressed archives for universal package managers (mise, asdf, aqua)
+  const tarName = `iris-sync-${platform}-${arch}.tar.gz`;
+  const versionedTarName = `iris-sync-b.${extensionVersion}-c.${cliVersion}-${platform}-${arch}.tar.gz`;
+  const tarPath = path.join(distDir, tarName);
+  const versionedTarPath = path.join(distDir, versionedTarName);
+
+  try {
+    const stageDir = path.join(distDir, ".stage-tar");
+    if (fs.existsSync(stageDir)) fs.rmSync(stageDir, { recursive: true, force: true });
+    fs.mkdirSync(stageDir, { recursive: true });
+    const stageBin = path.join(stageDir, `iris-sync${ext}`);
+    fs.copyFileSync(targetPath, stageBin);
+    fs.chmodSync(stageBin, 0o755);
+
+    execSync(`tar -czf "${tarPath}" -C "${stageDir}" "iris-sync${ext}"`);
+    fs.copyFileSync(tarPath, versionedTarPath);
+    fs.rmSync(stageDir, { recursive: true, force: true });
+    console.log(` Created archive:  ${tarPath}`);
+    console.log(` Created archive:  ${versionedTarPath}`);
+  } catch (err) {
+    console.warn(" Could not generate tar archive:", err);
+  }
+
   console.log("\n============================================================");
   console.log(` [PASS] Successfully compiled native standalone binary!`);
   console.log(` Canonical Binary: ${targetPath}`);
   console.log(` Versioned Binary: ${versionedPath}`);
+  console.log(` Universal Archive:${tarPath}`);
   console.log(` Target Version:   ${compositeVersion}`);
   console.log("============================================================\n");
 
-  // Step 7: Smoke test executable
+  // Step 8: Smoke test executable
   const testOut = execSync(`"${targetPath}" -V`, { encoding: "utf8" }).trim();
   console.log(`Verified execution: ${targetName} -V -> ${testOut}`);
 

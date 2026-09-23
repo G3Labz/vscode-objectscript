@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+version="${ASDF_INSTALL_VERSION}"
+download_path="${ASDF_DOWNLOAD_PATH}"
+
+os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+arch="$(uname -m)"
+
+case "$arch" in
+  x86_64) arch="x64" ;;
+  aarch64|arm64) arch="arm64" ;;
+  *) echo "Unsupported architecture: $arch" >&2; exit 1 ;;
+esac
+
+mkdir -p "$download_path"
+
+# First try downloading universal tar.gz archive if available
+archive_url="https://github.com/G3Labz/vscode-objectscript/releases/download/${version}/iris-sync-${os}-${arch}.tar.gz"
+versioned_url="https://github.com/G3Labz/vscode-objectscript/releases/download/${version}/iris-sync-${version}-${os}-${arch}"
+
+if curl -sSLf -o "${download_path}/iris-sync.tar.gz" "$archive_url" 2>/dev/null; then
+  tar -xzf "${download_path}/iris-sync.tar.gz" -C "$download_path"
+  rm -f "${download_path}/iris-sync.tar.gz"
+elif curl -sSLf -o "${download_path}/iris-sync" "$versioned_url" 2>/dev/null; then
+  chmod +x "${download_path}/iris-sync"
+else
+  # Fallback: standalone JS bundle via Node
+  js_url="https://github.com/G3Labz/vscode-objectscript/releases/download/${version}/iris-sync-${version}.js"
+  curl -sSLf -o "${download_path}/iris-sync" "$js_url"
+  chmod +x "${download_path}/iris-sync"
+fi
+
+chmod +x "${download_path}/iris-sync"

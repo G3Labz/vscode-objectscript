@@ -695,7 +695,8 @@ async function runTests() {
     const nativeBin = path.resolve(__dirname, `../dist/cli/iris-sync-${platform}-${arch}${ext}`);
     if (fs.existsSync(nativeBin)) {
       const out = execSync(`"${nativeBin}" -V`, { encoding: "utf8" }).trim();
-      assert.ok(out.startsWith("b.3.8.6-SNAPSHOT-c."));
+      const { extensionVersion } = getIrisSyncVersions();
+      assert.ok(out.startsWith(`b.${extensionVersion}-c.`));
       const help = execSync(`"${nativeBin}" --help`, { encoding: "utf8" });
       assert.ok(help.includes("InterSystems IRIS Headless"));
     }
