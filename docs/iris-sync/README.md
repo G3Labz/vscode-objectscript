@@ -206,6 +206,28 @@ iris-sync build --all --format sarif --output report.sarif
 iris-sync mcp
 ```
 
+Add this to your `.vscode/settings.json` (or `mcp.json`) to wire it up:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "iris-sync": {
+        "command": "iris-sync",
+        "args": ["mcp"],
+        "env": {
+          "IRIS_HOST": "127.0.0.1",
+          "IRIS_PORT": "52773",
+          "IRIS_NAMESPACE": "USER",
+          "IRIS_USERNAME": "_SYSTEM",
+          "IRIS_PASSWORD": "SYS"
+        }
+      }
+    }
+  }
+}
+```
+
 That's it — a single self-contained binary, no Node.js, no npm, no dependencies.
 
 ---
