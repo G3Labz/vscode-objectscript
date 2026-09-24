@@ -43,7 +43,9 @@
   - [x] Project-scoped file watching (`iris-sync watch --project <name>`)
   - [x] Project export pipeline (XML / UDL bundle export via `%SYSTEM.OBJ.Export` / Atelier API)
   - [x] Direct headless promotion / push-to-prod (`iris-sync project deploy <name> --target <srv> --compile`)
-- [x] **M2.1: Background Service Daemonization (`iris-sync daemon`)**
+- [x] **M2.1: Background Service Daemonization (`iris-sync daemon`) [Deprioritized / Optional Niche]**
+  - > [!NOTE]
+    > **Architectural Decision (Entry 013)**: Local OS daemonization is deprioritized in favor of foreground `iris-sync watch`. Daemonization introduces hidden "ghost syncs" during branch rebasing, silent failures without terminal feedback, and zombie process management. The unit generator code is preserved as an optional utility for dedicated headless staging VMs, while foreground execution is the official primary workflow.
   - [x] Linux systemd user/system service generator (`iris-sync daemon install --systemd`)
   - [x] macOS launchd daemon plist generator (`iris-sync daemon install --launchd`)
   - [x] PID file locking (`~/.iris-sync/daemon.pid`) & graceful termination (`iris-sync daemon stop`, `status`)
@@ -207,13 +209,13 @@ Timeline Overview:
 
 ### 4.1 Phase 2: Production Daemonization, Studio Projects & Streaming (Near-Term)
 
-- [ ] **M2.1: Background Service Daemonization (`iris-sync daemon`)**
-  - Generate and manage native OS service units:
-    - **Linux**: systemd user/system service generator (`iris-sync daemon install --systemd`).
-    - **macOS**: launchd daemon plist generator (`iris-sync daemon install --launchd`).
-    - **Windows**: Windows Service wrapper or background scheduled task.
-  - Implement PID file locking (`~/.iris-sync/daemon.pid`), status monitoring (`iris-sync daemon status`), and graceful termination (`iris-sync daemon stop`).
-  - Rotating log handlers with structured JSON and syslog outputs.
+- [x] **M2.1: Background Service Daemonization (`iris-sync daemon`) [Deprioritized / Optional Niche]**
+  - **Status**: Implemented but deprioritized for core developer workflows (see [EMPIRICISM.md Entry 013](EMPIRICISM.md#entry-013-developer-experience-invariant--foreground-interactive-watch-vs-background-os-daemonization)).
+  - **Rationale**: Local OS daemons create "ghost sync" hazards (silently compiling during git rebases), invisible socket/auth failures, and require manual process hunting. Modern developer tooling (e.g. `tsc --watch`, `cargo watch`, `esbuild`) favors foreground execution with immediate visual feedback and deterministic `Ctrl+C` lifecycle.
+  - Preserved capabilities for headless staging servers:
+    - Linux systemd user service generator (`iris-sync daemon install --systemd`).
+    - macOS launchd daemon plist generator (`iris-sync daemon install --launchd`).
+    - PID file locking (`~/.iris-sync/daemon.pid`), status monitoring, and graceful termination.
 
 - [ ] **M2.2: WebSocket Compiler Streaming (`api.atelier.websocket`)**
   - Atelier API v1+ supports upgrading HTTP to a bidirectional WebSocket (`/api/atelier/v1/{namespace}/websocket`).

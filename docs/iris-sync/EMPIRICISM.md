@@ -130,5 +130,19 @@
 - **Root Cause**: Architectural inquiry evaluated whether forking and layering a CLI over existing extensions delivers superior upstream maintenance and protocol compatibility compared to a greenfield tool.
 - **Resolution**: Formulated comparative feasibility assessment, selected Pattern A (Virtual Runtime Shim) as the authoritative architecture, and updated [headless-iris-sync-compiler-guide.md](headless-iris-sync-compiler-guide.md) across [Section 1.3](headless-iris-sync-compiler-guide.md#13-architectural-delivery-model-fork--headless-cli-layer-pattern-a), [Section 4.1-4.4](headless-iris-sync-compiler-guide.md#4-architectural-design-fork--headless-cli-layer-pattern-a), and [Section 6.1-6.5](headless-iris-sync-compiler-guide.md#6-extension-ecosystem-analysis--pattern-a-implementation-strategy), documenting the 52-file audit, concrete `vscode-shim.ts` specification, dual-target build system, and tree-shaking pipeline.
 
+## Entry 013: Developer Experience Invariant — Foreground Interactive Watch vs. Background OS Daemonization
 
+- **Date**: 2026-09-23
+- **Finding**:
+  1. Operating `iris-sync` as a detached local OS daemon (via `systemd` user units or `launchd` plists) introduces severe developer experience (DX) hazards on workstations:
+     - **The Ghost Sync**: External version control operations (`git checkout`, `git rebase`, `git stash`) cause a detached background daemon to silently upload and compile intermediate, broken files into the IRIS server without developer intent or awareness.
+     - **Invisible Failures**: Network drops, credential expirations, and Atelier 401/409 conflicts fail silently in background log files (`~/.iris-sync/daemon.log` or `journalctl`), leading to frustrating debugging sessions where developers wonder why server state diverged from disk.
+     - **Context & Namespace Drift**: Working across multiple repositories or branches targeting different IRIS namespaces creates race conditions; a global background daemon cannot infer the developer's immediate focus.
+     - **Zombie PIDs & Lifecycle Friction**: Stale PID files and hung sockets require hunting down background processes (`kill -9 $(pgrep iris-sync)`).
+  2. Industry consensus across modern language compilers and synchronizers (`tsc --watch`, `cargo watch`, `esbuild --watch`, `air`) establishes that interactive developer tools should run in the foreground tied directly to a terminal session or editor split.
+  3. In containerized CI/CD, Kubernetes, and staging environments, processes run as PID 1 in the foreground (`CMD ["iris-sync", "watch"]`), making local OS daemon wrappers structurally redundant in modern container-first architectures.
+- **Resolution**:
+  - Deprioritized **M2.1 (Background Service Daemonization)** as a primary developer workflow.
+  - Designated **Foreground Interactive Watch (`iris-sync watch`)** as the official, first-class DX standard, providing explicit lifecycle control (`Ctrl+C` or closing terminal kills the watcher) and real-time visual compilation logs.
+  - Preserved `iris-sync daemon` unit generator commands strictly as an optional, specialized utility for dedicated headless bare-metal staging servers.
 
