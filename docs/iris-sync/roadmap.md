@@ -71,7 +71,7 @@
 
 ### Phase 4: Enterprise CI/CD & Auto-Sync (Current Phase)
 - [x] **M4.1: Official CI/CD GitHub Actions & GitLab CI Templates (`ghcr.io/g3labz/iris-sync`)**
-- [ ] **M4.2: Automated Upstream Parity Bot (weekly sync & PR creation)**
+- [x] **M4.2: Automated Upstream Parity Bot (weekly sync & PR creation)**
 - [ ] **M4.3: Secure Credential Vault Bridge (HashiCorp Vault, AWS/GCP/Azure Secret Managers)**
 - [ ] **M4.4: Public Package Registry Publishing (`@g3labz/iris-sync` on npm)**
 - [ ] **M4.5: Interoperability Production Config Item Lifecycle & Safe BO Hot-Restart (`Ens.Director`)**
@@ -338,7 +338,7 @@ Timeline Overview:
     ```
   - Docker container images published to GitHub Container Registry (`ghcr.io/g3labz/iris-sync:latest`).
 
-- [ ] **M4.2: Automated Upstream Parity Bot**
+- [x] **M4.2: Automated Upstream Parity Bot**
   - Scheduled GitHub Action in `vscode-objectscript`:
     - Automatically checks `upstream/master` on `intersystems-community/vscode-objectscript` weekly.
     - Executes `npm run test:shim` against upstream changes.

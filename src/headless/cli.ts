@@ -65,6 +65,7 @@ import {
   formatTap,
   formatConsoleReport,
 } from "./testRunner";
+import { runParityBot } from "./dev/upstream-bot";
 
 // ---------------------------------------------------------------------------
 // Bootstrap Runtime Shim & Upstream Extension Context
@@ -1808,7 +1809,10 @@ daemonCmd
 program
   .command("dev [subaction]")
   .description("Developer utilities for upstream repository synchronization and contract audit")
-  .action(async (subaction?: string) => {
+  .option("--pr", "Automatically create Pull Request if upstream sync is clean")
+  .option("--issue", "Automatically create GitHub Issue if upstream drift is detected")
+  .option("--dry-run", "Simulate parity check and PR/issue creation without writing to GitHub")
+  .action(async (subaction?: string, options?: any) => {
     if (subaction === "version") {
       const v = getIrisSyncVersions();
       console.log(`iris-sync CLI version: ${v.cliVersion}`);
@@ -1816,6 +1820,17 @@ program
       console.log(`Composite identifier:  ${v.compositeVersion}`);
       console.log(`Binary artifact:       ${v.binaryFilename}`);
       console.log(`Release git tag:       ${v.releaseTag}`);
+      return;
+    }
+    if (subaction === "parity-bot" || subaction === "bot") {
+      const res = await runParityBot({
+        createPr: options?.pr,
+        createIssue: options?.issue,
+        dryRun: options?.dryRun,
+      });
+      if (res.status === "drift-detected") {
+        process.exit(1);
+      }
       return;
     }
     if (subaction === "sync-upstream" || !subaction) {
@@ -1831,7 +1846,7 @@ program
         process.exit(1);
       }
     } else {
-      logger.info(`Unknown dev subaction: ${subaction}. Supported: sync-upstream`);
+      logger.info(`Unknown dev subaction: ${subaction}. Supported: version, sync-upstream, parity-bot`);
     }
   });
 

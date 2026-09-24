@@ -27,6 +27,7 @@ import {
   UnitTestRunReport,
 } from "../src/headless/testRunner";
 import { getIrisSyncVersions } from "../src/headless/version";
+import { scanAstParity, checkUpstreamStatus, runParityBot } from "../src/headless/dev/upstream-bot";
 
 const {
   Uri,
@@ -926,6 +927,39 @@ async function runTests() {
     assert.ok(helpOut.includes("--method"), "Missing --method option");
     assert.ok(helpOut.includes("--format"), "Missing --format option");
     assert.ok(helpOut.includes("--output-file"), "Missing --output-file option");
+  });
+
+  // -------------------------------------------------------------------------
+  // Group 16: Upstream Parity Bot & Contract Scanning (Milestone M4.2)
+  // -------------------------------------------------------------------------
+  console.log("\nSuite 16: Upstream Parity Bot & Contract Scanning (Milestone M4.2)");
+
+  await it("scanAstParity confirms 0 missing vscode.* symbols across upstream codebase", () => {
+    const res = scanAstParity(path.resolve(__dirname, "../src"));
+    assert.strictEqual(res.missingSymbols.length, 0, `Detected missing symbols: ${res.missingSymbols.join(", ")}`);
+    assert.ok(res.totalFiles > 50, "Should scan at least 50 upstream files");
+    assert.ok(res.totalSymbols > 100, "Should audit at least 100 referenced symbols");
+  });
+
+  await it("checkUpstreamStatus returns tracking information for upstream remote", () => {
+    const status = checkUpstreamStatus({ cwd: path.resolve(__dirname, "..") });
+    assert.ok(status.upstreamRemote, "Should identify an upstream remote");
+    assert.strictEqual(typeof status.behindCount, "number");
+    assert.strictEqual(typeof status.aheadCount, "number");
+  });
+
+  await it("runParityBot executes cleanly in dry-run mode without unhandled errors", async () => {
+    const result = await runParityBot({ dryRun: true, cwd: path.resolve(__dirname, "..") });
+    assert.ok(["up-to-date", "clean-sync"].includes(result.status), `Unexpected status: ${result.status}`);
+  });
+
+  await it("iris-sync dev --help exposes parity-bot subaction and flags", () => {
+    const { compositeVersion } = getIrisSyncVersions();
+    const cliPath = path.resolve(__dirname, `../dist/cli/iris-sync-${compositeVersion}.js`);
+    const helpOut = execSync(`node "${cliPath}" dev --help`).toString("utf8");
+    assert.ok(helpOut.includes("--pr"), "Missing --pr option");
+    assert.ok(helpOut.includes("--issue"), "Missing --issue option");
+    assert.ok(helpOut.includes("--dry-run"), "Missing --dry-run option");
   });
 
   console.log("\n============================================================");
