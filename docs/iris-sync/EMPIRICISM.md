@@ -146,3 +146,29 @@
   - Designated **Foreground Interactive Watch (`iris-sync watch`)** as the official, first-class DX standard, providing explicit lifecycle control (`Ctrl+C` or closing terminal kills the watcher) and real-time visual compilation logs.
   - Preserved `iris-sync daemon` unit generator commands strictly as an optional, specialized utility for dedicated headless bare-metal staging servers.
 
+## Entry 014: Studio Project Parity, Tracked File Sets & Headless Promotion/Ingestion Pipeline
+
+- **Date**: 2026-09-23
+- **Finding**:
+  1. In legacy InterSystems IRIS Studio, Projects (`%Studio.Project` / `.PRJ` documents) served as the primary unit of deployment promotion: developers defined named item manifests (classes, routines, includes, csp) and exported them as monolithic XML packages (`%SYSTEM.OBJ.Export`) for ingestion into staging/production servers.
+  2. In `vscode-objectscript`, project scoping was coupled exclusively to virtual `isfs://` workspace folders, leaving local filesystem (`file://`) and headless CI/CD operations without a way to define, track, diff, or deploy curated subsets of code offline.
+  3. Package ingestion across diverse IRIS versions requires multi-tier transport fallbacks:
+     - IRIS v7+ Atelier REST API provides `/action/xml/load`, which ingests XML packages server-side and returns the list of imported document names.
+     - Older IRIS / Cache versions lack `/action/xml/load`. Direct fallback synthesis parsing (`<Document name="...">` extraction or `<Class name="...">` extraction combined with `api.putDoc` or `%SYSTEM_OBJ.Load` via SQL) ensures universal compatibility across all target environments.
+  4. Scoped compilation (`iris-sync compile --project <name>`), scoped watching (`iris-sync watch --project <name>`), and project diffing (`iris-sync diff --project <name>`) prevent full-repository blast radius, restricting synchronization strictly to the files defined in `.iris-sync/projects/<name>.json`.
+- **Resolution**:
+  - Implemented complete Studio Project Parity subsystem in `src/headless/projectManifest.ts`.
+  - Added CLI commands:
+    - `iris-sync project list [--remote]`
+    - `iris-sync project create <name> [--desc] [--server-prj] [--ns] [--format]`
+    - `iris-sync project add <name> <files...>` / `iris-sync project remove <name> <files...>`
+    - `iris-sync project show <name>`
+    - `iris-sync project sync-manifest <name> [--direction]`
+    - `iris-sync project export <name> -o <path> [--format xml|udl]`
+    - `iris-sync project deploy <name> [-t <server>] [-n <ns>] [--compile] [--flags <flags>]`
+    - `iris-sync project import <package> [-t <server>] [-n <ns>] [--compile] [--flags <flags>] [--save-manifest <name>]`
+    - `iris-sync diff [file] [--project <name>]`
+  - Integrated MCP tools `iris_project_export`, `iris_project_deploy`, and `iris_project_import` in `src/headless/mcpServer.ts` enabling AI coding agents to export and promote project packages directly.
+  - Added full test coverage in Suite 10 (`test/shim.test.ts`), verifying XML/UDL ingestion fallbacks, command options, and MCP exposure (59 passed, 0 failed).
+
+

@@ -47,6 +47,7 @@ import {
   syncProjectManifestWithServer,
   exportProjectToXml,
   exportProjectToUdl,
+  importProjectPackage,
   itemToDocName,
 } from "./projectManifest";
 import {
@@ -944,10 +945,82 @@ program
 
 // --- DIFF ---
 program
-  .command("diff <file>")
-  .description("Show colorized unified diff between local file and IRIS server copy")
-  .action(async (file: string) => {
+  .command("diff [file]")
+  .description("Show colorized unified diff between local file and IRIS server copy (or across all files in a project)")
+  .option("-p, --project <name>", "Compare all files in the named project manifest against their server-side counterparts")
+  .action(async (file: string | undefined, cmdOptions: any) => {
     const globalOpts = program.opts();
+
+    if (cmdOptions.project) {
+      const manifest = loadProjectManifest(cmdOptions.project);
+      if (!manifest) {
+        logger.error(`Project manifest '${cmdOptions.project}' not found in .iris-sync/projects/`);
+        process.exit(1);
+      }
+
+      if (manifest.items.length === 0) {
+        logger.info(`Project '${manifest.name}' contains no tracked items.`);
+        process.exit(0);
+      }
+
+      const config = bootstrapEnvironment({
+        profile: globalOpts.profile,
+        server: globalOpts.server,
+        namespace: manifest.targetNamespace || globalOpts.namespace,
+        insecure: globalOpts.insecure,
+      });
+
+      const api = new AtelierAPI("");
+      api.setNamespace(config.namespace);
+
+      logger.info(
+        `[DIFF] Comparing project '${manifest.name}' (${manifest.items.length} items) against [${config.namespace}] on ${config.serverName}...`
+      );
+
+      let diffCount = 0;
+      let identicalCount = 0;
+      let missingCount = 0;
+
+      for (const item of manifest.items) {
+        const absPath = path.resolve(process.cwd(), item);
+        if (!fs.existsSync(absPath)) {
+          logger.warn(`Local file missing: ${item}`);
+          missingCount++;
+          continue;
+        }
+
+        const docName = resolveDocName(absPath, config.sourceRoot);
+        try {
+          const localContent = fs.readFileSync(absPath, "utf8");
+          const localLines = localContent.split(/\r?\n/);
+          const res = await api.getDoc(docName, Uri.file(absPath), undefined, false, false);
+          const serverLines = Array.isArray(res.result.content)
+            ? res.result.content
+            : res.result.content.toString().split(/\r?\n/);
+
+          const diff = generateUnifiedDiff(serverLines, localLines, docName, item);
+          if (diff.length > 0) {
+            console.log(diff.join("\n"));
+            diffCount++;
+          } else {
+            identicalCount++;
+          }
+        } catch (err: any) {
+          logger.error(`Diff failed for ${docName}: ${err?.message || err}`);
+        }
+      }
+
+      logger.info(
+        `[DIFF SUMMARY] ${manifest.name}: ${identicalCount} identical, ${diffCount} differences, ${missingCount} missing locally.`
+      );
+      process.exit(diffCount > 0 ? 1 : 0);
+    }
+
+    if (!file) {
+      logger.error("Please specify a <file> to diff or provide '--project <name>'.");
+      process.exit(1);
+    }
+
     const config = bootstrapEnvironment({
       profile: globalOpts.profile,
       server: globalOpts.server,
@@ -1754,6 +1827,85 @@ projectCmd
     }
   });
 
+projectCmd
+  .command("import <package>")
+  .description("Ingest and compile an exported project package (XML or UDL bundle) on a target server")
+  .option("-t, --target <server>", "Target server name from .iris-sync/servers.json")
+  .option("-n, --namespace <ns>", "Target database namespace")
+  .option("--compile", "Trigger compilation after package ingestion", true)
+  .option("--no-compile", "Ingest package without triggering compilation")
+  .option("--flags <flags>", "Compiler flags (default: cuk)", "cuk")
+  .option(
+    "--save-manifest <name>",
+    "Optionally create/update local project manifest (.iris-sync/projects/<name>.json) with imported files"
+  )
+  .action(async (packagePath: string, cmdOptions: any) => {
+    const absPath = path.resolve(process.cwd(), packagePath);
+    if (!fs.existsSync(absPath)) {
+      logger.error(`Package file or directory not found: ${packagePath}`);
+      process.exit(1);
+    }
+
+    const globalOpts = program.opts();
+    const targetServer = cmdOptions.target || globalOpts.server;
+    const targetNs = cmdOptions.namespace || globalOpts.namespace;
+
+    const config = bootstrapEnvironment({
+      server: targetServer,
+      namespace: targetNs,
+      host: globalOpts.host,
+      port: globalOpts.port,
+      user: globalOpts.user,
+      password: globalOpts.password,
+      flags: cmdOptions.flags,
+      insecure: globalOpts.insecure,
+    });
+
+    const api = new AtelierAPI();
+    logger.info(
+      `[IMPORT] Ingesting package '${packagePath}' into server '${config.serverName}' (namespace ${api.ns})...`
+    );
+
+    try {
+      const res = await importProjectPackage(absPath, api, {
+        compile: cmdOptions.compile !== false,
+        flags: cmdOptions.flags || config.compileFlags,
+        cwd: config.sourceRoot,
+      });
+
+      if (cmdOptions.saveManifest && res.importedDocs.length > 0) {
+        const manifestName = cmdOptions.saveManifest;
+        const existing = loadProjectManifest(manifestName);
+        if (!existing) {
+          createProjectManifest(manifestName, {
+            description: `Imported from ${path.basename(packagePath)}`,
+            items: res.importedDocs,
+            targetNamespace: targetNs,
+          });
+          logger.success(`Created local project manifest '${manifestName}' with ${res.importedDocs.length} items.`);
+        } else {
+          addItemsToProject(manifestName, res.importedDocs);
+          logger.success(`Updated local project manifest '${manifestName}' (+${res.importedDocs.length} items).`);
+        }
+      }
+
+      if (res.compileSuccess) {
+        logger.success(
+          `Package '${packagePath}' imported and verified successfully (${res.importedDocs.length} documents into ${api.ns} @ ${config.serverName}).`
+        );
+      } else {
+        logger.error(`Package '${packagePath}' imported, but compilation finished with errors.`);
+        if (res.errors && res.errors.length > 0) {
+          res.errors.forEach((e) => logger.error(`  • ${e}`));
+        }
+        process.exit(1);
+      }
+    } catch (err: any) {
+      logger.error(`Package import failed: ${err?.message || err}`);
+      process.exit(1);
+    }
+  });
+
 // --- DAEMON ---
 const daemonCmd = program
   .command("daemon")
@@ -1945,6 +2097,8 @@ program
 export async function run(): Promise<void> {
   await program.parseAsync(process.argv);
 }
+
+export { importProjectPackage };
 
 if (require.main === module) {
   run().catch((err) => {

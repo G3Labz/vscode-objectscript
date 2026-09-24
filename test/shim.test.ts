@@ -557,14 +557,89 @@ async function runTests() {
     assert.ok(out.includes("sync-manifest"));
     assert.ok(out.includes("export"));
     assert.ok(out.includes("deploy"));
+    assert.ok(out.includes("import"));
   });
 
-  await it("iris-sync compile and watch list --project option", () => {
+  await it("iris-sync project import --help lists all promotion/ingestion options", () => {
+    const out = execSync(`node "${binPath}" project import --help`, { encoding: "utf8" });
+    assert.ok(out.includes("--target"));
+    assert.ok(out.includes("--namespace"));
+    assert.ok(out.includes("--compile"));
+    assert.ok(out.includes("--no-compile"));
+    assert.ok(out.includes("--flags"));
+    assert.ok(out.includes("--save-manifest"));
+  });
+
+  await it("iris-sync compile, watch, and diff list --project option", () => {
     const compileHelp = execSync(`node "${binPath}" compile --help`, { encoding: "utf8" });
     assert.ok(compileHelp.includes("--project"));
 
     const watchHelp = execSync(`node "${binPath}" watch --help`, { encoding: "utf8" });
     assert.ok(watchHelp.includes("--project"));
+
+    const diffHelp = execSync(`node "${binPath}" diff --help`, { encoding: "utf8" });
+    assert.ok(diffHelp.includes("--project"));
+  });
+
+  await it("importProjectPackage correctly ingests XML and UDL bundles with fallback", async () => {
+    const { importProjectPackage } = require(binPath);
+    const testDir = path.resolve("/tmp/iris-import-test");
+    fs.mkdirSync(testDir, { recursive: true });
+    try {
+      // 1. Test XML package ingestion
+      const xmlFile = path.join(testDir, "TestPkg.xml");
+      const xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<Export generator="iris-sync" version="25">
+<Document name="App.Invoice.cls">
+Class App.Invoice Extends %RegisteredObject
+{
+}
+</Document>
+<Document name="UTILTEST.mac">
+ROUTINE UTILTEST
+ Write "Hello",!
+</Document>
+</Export>`;
+      fs.writeFileSync(xmlFile, xmlContent, "utf8");
+
+      const putDocs: { name: string; content: string[] }[] = [];
+      const mockApi: any = {
+        ns: "USER",
+        actionXMLLoad: async () => {
+          throw new Error("actionXMLLoad not supported on older server");
+        },
+        putDoc: async (name: string, data: any) => {
+          putDocs.push({ name, content: data.content });
+          return { status: { errors: [] }, result: { content: {} } };
+        },
+        asyncCompile: async (docs: string[]) => {
+          return { status: { errors: [] }, result: { content: {} } };
+        },
+      };
+
+      const res = await importProjectPackage(xmlFile, mockApi, { compile: true, cwd: testDir });
+      assert.strictEqual(res.format, "xml");
+      assert.strictEqual(res.compileSuccess, true);
+      assert.strictEqual(res.importedDocs.length, 2);
+      assert.ok(res.importedDocs.includes("App.Invoice.cls"));
+      assert.ok(res.importedDocs.includes("UTILTEST.mac"));
+      assert.strictEqual(putDocs.length, 2);
+
+      // 2. Test UDL bundle directory ingestion
+      const udlDir = path.join(testDir, "udl-bundle");
+      fs.mkdirSync(udlDir, { recursive: true });
+      fs.writeFileSync(path.join(udlDir, "App.Payment.cls"), "Class App.Payment {}", "utf8");
+      fs.writeFileSync(path.join(udlDir, "BillingDef.inc"), "#define TEST 1", "utf8");
+
+      putDocs.length = 0;
+      const resUdl = await importProjectPackage(udlDir, mockApi, { compile: false, cwd: testDir });
+      assert.strictEqual(resUdl.format, "udl");
+      assert.strictEqual(resUdl.importedDocs.length, 2);
+      assert.ok(resUdl.importedDocs.some((d) => d.includes("Payment.cls")));
+      assert.ok(resUdl.importedDocs.some((d) => d.includes("BillingDef.inc")));
+    } finally {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
   });
 
   await it("Project manifest lifecycle: create, add, show, list, and remove", () => {
@@ -1022,7 +1097,11 @@ async function runTests() {
 
       proc.stdout.on("data", (chunk: Buffer) => {
         output += chunk.toString("utf8");
-        if (output.includes("iris_restart_config_item") && output.includes("confirmInflightRisk")) {
+        if (
+          output.includes("iris_restart_config_item") &&
+          output.includes("confirmInflightRisk") &&
+          output.includes("iris_project_import")
+        ) {
           clearTimeout(timer);
           proc.kill();
           resolve();

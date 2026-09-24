@@ -242,7 +242,7 @@ Timeline Overview:
     - `iris-sync-windows-x64.exe`
   - Eliminates the requirement for end-users to have Node.js or npm installed.
 
-- [ ] **M2.5: Studio Project Parity, Tracked File Sets & Promotion/Export Pipeline (`iris-sync project`)**
+- [x] **M2.5: Studio Project Parity, Tracked File Sets & Promotion/Export Pipeline (`iris-sync project`)**
   - **Problem Statement & Legacy Studio Parity**:
     - In InterSystems IRIS Studio, the **Projects** feature (`.PRJ` documents stored internally in `%Studio.Project`) allows developers to define a named, curated manifest of files/documents (classes `.cls`, routines `.mac`, includes `.inc`, and web assets `.csp`).
     - Historically, the most vital capability of Studio Projects was **deployment promotion**: when preparing to push to production or staging servers, developers exported the project package (via `%SYSTEM.OBJ.Export` as an XML or UDL bundle) and imported it into the target server environment without needing to deploy the entire codebase or database.

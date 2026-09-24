@@ -11,6 +11,7 @@ import * as path from "path";
 import { AtelierAPI } from "../api";
 import { resolveDocName } from "./cli";
 import { logger } from "./terminalLogger";
+import { CancellationTokenSource } from "./vscode-shim";
 
 export const PROJECT_SCHEMA_URL =
   "https://raw.githubusercontent.com/G3Labz/vscode-objectscript/master/schemas/irisproject.schema.json";
@@ -496,4 +497,192 @@ export async function exportProjectToUdl(
   }
 
   return exportedFiles;
+}
+
+export interface ProjectImportOptions {
+  compile?: boolean;
+  flags?: string;
+  cwd?: string;
+}
+
+export interface ProjectImportResult {
+  fileOrDir: string;
+  format: "xml" | "udl";
+  importedDocs: string[];
+  compileSuccess: boolean;
+  errors?: string[];
+}
+
+/**
+ * Ingests and compiles exported project packages on target IRIS server headlessly.
+ * Supports InterSystems XML deployment packages (.xml) and structured UDL bundle folders.
+ */
+export async function importProjectPackage(
+  packagePath: string,
+  api: AtelierAPI,
+  options: ProjectImportOptions = {}
+): Promise<ProjectImportResult> {
+  const root = options.cwd || process.cwd();
+  const absPath = path.isAbsolute(packagePath) ? packagePath : path.resolve(root, packagePath);
+
+  if (!fs.existsSync(absPath)) {
+    throw new Error(`Package path does not exist: ${packagePath}`);
+  }
+
+  const stat = fs.statSync(absPath);
+  const importedDocs: string[] = [];
+  const errors: string[] = [];
+  let format: "xml" | "udl" = "xml";
+
+  if (stat.isDirectory()) {
+    format = "udl";
+    // Walk directory and ingest all code documents
+    const codeFiles: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if ([".cls", ".mac", ".int", ".inc", ".csp", ".dfi", ".prj"].includes(ext)) {
+            codeFiles.push(full);
+          }
+        }
+      }
+    };
+    walk(absPath);
+
+    if (codeFiles.length === 0) {
+      throw new Error(`No InterSystems source files found in directory: ${packagePath}`);
+    }
+
+    for (const filePath of codeFiles) {
+      try {
+        const docName = resolveDocName(filePath, absPath);
+        const content = fs.readFileSync(filePath, "utf8");
+        const lines = content.split(/\r?\n/);
+        await api.putDoc(docName, { enc: false, content: lines, mtime: 0 }, true);
+        importedDocs.push(docName);
+      } catch (err: any) {
+        const msg = `Failed to put document from '${filePath}': ${err?.message || err}`;
+        logger.error(msg);
+        errors.push(msg);
+      }
+    }
+  } else {
+    // Single file: XML package or individual document
+    format = "xml";
+    const content = fs.readFileSync(absPath, "utf8");
+    const lines = content.split(/\r?\n/);
+    const fileName = path.basename(absPath);
+
+    let loadedViaAtelier = false;
+    try {
+      const res = await api.actionXMLLoad([{ file: fileName, content: lines }]);
+      if (res && res.result && Array.isArray(res.result.content)) {
+        for (const item of res.result.content) {
+          if (Array.isArray(item.imported)) {
+            importedDocs.push(...item.imported);
+          }
+          if (item.status && item.status.toLowerCase().includes("error")) {
+            errors.push(item.status);
+          }
+        }
+        loadedViaAtelier = true;
+      }
+    } catch (err: any) {
+      logger.warn(`Atelier actionXMLLoad failed: ${err?.message || err}. Falling back to document synthesis parsing.`);
+    }
+
+    // Fallback: If actionXMLLoad failed or returned no imported documents, parse XML tags
+    if (!loadedViaAtelier || importedDocs.length === 0) {
+      // 1. Check for synthetic <Document name="...">...</Document>
+      const docRegex = /<Document\s+name="([^"]+)">([\s\S]*?)<\/Document>/gi;
+      let match: RegExpExecArray | null;
+      let parsedAny = false;
+
+      while ((match = docRegex.exec(content)) !== null) {
+        parsedAny = true;
+        const docName = match[1];
+        const docBody = match[2];
+        const docLines = docBody.replace(/^\r?\n/, "").replace(/\r?\n$/, "").split(/\r?\n/);
+        try {
+          await api.putDoc(docName, { enc: false, content: docLines, mtime: 0 }, true);
+          importedDocs.push(docName);
+        } catch (err: any) {
+          const msg = `Failed to put document '${docName}': ${err?.message || err}`;
+          logger.error(msg);
+          errors.push(msg);
+        }
+      }
+
+      // 2. If no synthetic <Document> tags found, check for standard Studio XML elements (<Class>, <Routine>)
+      if (!parsedAny) {
+        try {
+          const cvtRes = await api.cvtXmlUdl(content);
+          if (cvtRes && cvtRes.result && Array.isArray(cvtRes.result.content)) {
+            for (const item of cvtRes.result.content as any[]) {
+              const name = item.name || item.docName;
+              if (name && item.content) {
+                const docLines = Array.isArray(item.content) ? item.content : item.content.split(/\r?\n/);
+                await api.putDoc(name, { enc: false, content: docLines, mtime: 0 }, true);
+                importedDocs.push(name);
+                parsedAny = true;
+              }
+            }
+          }
+        } catch (_) {
+          // cvtXmlUdl not supported or failed
+        }
+
+        if (!parsedAny) {
+          const classRegex = /<Class\s+name="([^"]+)">/gi;
+          const classes: string[] = [];
+          let cMatch: RegExpExecArray | null;
+          while ((cMatch = classRegex.exec(content)) !== null) {
+            classes.push(cMatch[1]);
+          }
+          if (classes.length > 0) {
+            try {
+              await api.actionQuery("SELECT %SYSTEM_OBJ.Load(?, 'cku-d') AS Status", [absPath]);
+              classes.forEach((c) => importedDocs.push(`${c}.cls`));
+              parsedAny = true;
+            } catch (loadErr: any) {
+              errors.push(`Could not execute %SYSTEM.OBJ.Load on server: ${loadErr?.message || loadErr}`);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // De-duplicate imported documents
+  const uniqueDocs = Array.from(new Set(importedDocs));
+
+  let compileSuccess = true;
+  if (options.compile !== false && uniqueDocs.length > 0) {
+    try {
+      const cts = new CancellationTokenSource();
+      const flags = options.flags || "cuk";
+      const compileRes = await api.asyncCompile(uniqueDocs, cts.token, flags);
+      if (compileRes.status && compileRes.status.errors && compileRes.status.errors.length) {
+        compileSuccess = false;
+        errors.push(
+          ...compileRes.status.errors.map((e: any) => (typeof e === "string" ? e : e.msg || JSON.stringify(e)))
+        );
+      }
+    } catch (compileErr: any) {
+      compileSuccess = false;
+      errors.push(`Compilation error: ${compileErr?.message || compileErr}`);
+    }
+  }
+
+  return {
+    fileOrDir: absPath,
+    format,
+    importedDocs: uniqueDocs,
+    compileSuccess,
+    errors: errors.length > 0 ? errors : undefined,
+  };
 }

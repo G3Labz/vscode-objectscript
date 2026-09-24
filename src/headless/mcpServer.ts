@@ -20,6 +20,7 @@ import {
   exportProjectToXml,
   exportProjectToUdl,
   saveProjectManifest,
+  importProjectPackage,
 } from "./projectManifest";
 import { importFile, compile, loadChanges } from "../commands/compile";
 import {
@@ -168,6 +169,36 @@ const MCP_TOOLS: McpTool[] = [
         },
       },
       required: ["project", "targetServer"],
+    },
+  },
+  {
+    name: "iris_project_import",
+    description: "Ingest and compile an exported InterSystems XML deployment package or UDL bundle directory headlessly on an IRIS server.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        file: {
+          type: "string",
+          description: "Path to the XML deployment package file or UDL directory to import",
+        },
+        targetServer: {
+          type: "string",
+          description: "Target server key from .iris-sync/servers.json (optional, defaults to active server)",
+        },
+        namespace: {
+          type: "string",
+          description: "Target IRIS namespace (optional, defaults to active namespace)",
+        },
+        compile: {
+          type: "boolean",
+          description: "Whether to compile imported items (default: true)",
+        },
+        flags: {
+          type: "string",
+          description: "Compiler flags (default: 'cuk')",
+        },
+      },
+      required: ["file"],
     },
   },
   {
@@ -487,16 +518,29 @@ export class IrisSyncMcpServer {
 
         const format = args.format || "xml";
         const outPath = args.out || `${manifest.name}.${format === "xml" ? "xml" : "bundle"}`;
+        const api = new AtelierAPI();
 
-        if (format === "xml") {
-          exportProjectToXml(manifest, outPath, this._config.sourceRoot);
-        } else {
-          exportProjectToUdl(manifest, outPath, this._config.sourceRoot);
+        try {
+          if (format === "xml") {
+            await exportProjectToXml(manifest, api, outPath, this._config.sourceRoot);
+          } else {
+            await exportProjectToUdl(manifest, api, outPath, this._config.sourceRoot);
+          }
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Exported project '${manifest.name}' (${manifest.items.length} items) to ${outPath} (${format.toUpperCase()}).`,
+              },
+            ],
+          };
+        } catch (err: any) {
+          return {
+            content: [{ type: "text", text: `Export failed: ${err?.message || err}` }],
+            isError: true,
+          };
         }
-
-        return {
-          content: [{ type: "text", text: `Exported project '${manifest.name}' (${manifest.items.length} items) to ${outPath} (${format.toUpperCase()}).` }],
-        };
       }
 
       case "iris_project_deploy": {
@@ -549,6 +593,65 @@ export class IrisSyncMcpServer {
             },
           ],
         };
+      }
+
+      case "iris_project_import": {
+        const pkgPath = args.file;
+        if (!pkgPath) {
+          return {
+            content: [{ type: "text", text: "Missing required parameter 'file'." }],
+            isError: true,
+          };
+        }
+
+        let api: AtelierAPI;
+        if (args.targetServer) {
+          const targetServer = args.targetServer;
+          const targetSpec = this._config.servers[targetServer];
+          if (!targetSpec) {
+            return {
+              content: [{ type: "text", text: `Target server '${targetServer}' not found in server catalog.` }],
+              isError: true,
+            };
+          }
+          const deployConfig: ResolvedConfig = {
+            ...this._config,
+            serverName: targetServer,
+            serverSpec: targetSpec,
+            namespace: args.namespace || (targetSpec.webServer ? this._config.namespace : "USER"),
+          };
+          applyConfigurationToShim(deployConfig);
+          api = new AtelierAPI();
+          api.setNamespace(deployConfig.namespace);
+        } else if (args.namespace) {
+          api = new AtelierAPI();
+          api.setNamespace(args.namespace);
+        } else {
+          api = new AtelierAPI();
+        }
+
+        try {
+          const res = await importProjectPackage(pkgPath, api, {
+            compile: args.compile !== false,
+            flags: args.flags || "cuk",
+            cwd: this._config.sourceRoot,
+          });
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Successfully ingested package '${pkgPath}' (${res.format.toUpperCase()} format). Imported ${res.importedDocs.length} documents into [${api.ns}] on server '${this._config.serverName}'. Compilation ${res.compileSuccess ? "succeeded cleanly" : "completed with errors"}.\n\nImported:\n${res.importedDocs.map((d: string) => ` - ${d}`).join("\n")}${res.errors ? `\n\nErrors/Warnings:\n${res.errors.join("\n")}` : ""}`,
+              },
+            ],
+            isError: !res.compileSuccess,
+          };
+        } catch (err: any) {
+          return {
+            content: [{ type: "text", text: `Import failed: ${err?.message || err}` }],
+            isError: true,
+          };
+        }
       }
 
       case "iris_restart_config_item": {
