@@ -74,13 +74,13 @@
 - [x] **M4.2: Automated Upstream Parity Bot (weekly sync & PR creation)**
 - [ ] **M4.3: Secure Credential Vault Bridge (HashiCorp Vault, AWS/GCP/Azure Secret Managers)**
 - [ ] **M4.4: Public Package Registry Publishing (`@g3labz/iris-sync` on npm)**
-- [ ] **M4.5: Interoperability Production Config Item Lifecycle & Safe BO Hot-Restart (`Ens.Director`)**
-  - [ ] Preferred primitive: `Do ##class(Ens.Director).RestartHost("ConfigItemName")`
-  - [ ] Production reload: `Do ##class(Ens.Director).UpdateProduction()`
-  - [ ] Fallback toggle: disable & re-enable via `##class(Ens.Director).EnableConfigItem("Name", 0|1)`
-  - [ ] Strictly opt-in execution (never automatic by default) with explicit warnings regarding inflight message queues
-  - [ ] Dedicated MCP tool (`tools/iris_restart_config_item`) enabling AI agents to await multi-file edits before cycling
-  - [ ] Target environment requirement: InterSystems IRIS (2023+ recommended) with Interoperability enabled
+- [x] **M4.5: Interoperability Production Config Item Lifecycle & Safe BO Hot-Restart (`Ens.Director`)**
+  - [x] Preferred primitive: `Do ##class(Ens.Director).RestartHost("ConfigItemName")`
+  - [x] Production reload: `Do ##class(Ens.Director).UpdateProduction()`
+  - [x] Fallback toggle: disable & re-enable via `##class(Ens.Director).EnableConfigItem("Name", 0|1)`
+  - [x] Strictly opt-in execution (never automatic by default) with explicit warnings regarding inflight message queues
+  - [x] Dedicated MCP tool (`tools/iris_restart_config_item`) enabling AI agents to await multi-file edits before cycling
+  - [x] Target environment requirement: InterSystems IRIS (2023+ recommended) with Interoperability enabled
 
 ---
 
@@ -354,7 +354,7 @@ Timeline Overview:
 - [ ] **M4.4: Public Package Registry Publishing**
   - Publish `@g3labz/iris-sync` to npm with automatic CLI binary executable linking (`npx @g3labz/iris-sync watch`).
 
-- [ ] **M4.5: Interoperability Production Config Item Lifecycle & Safe BO Hot-Restart (`Ens.Director`)**
+- [x] **M4.5: Interoperability Production Config Item Lifecycle & Safe BO Hot-Restart (`Ens.Director`)**
   - **Problem Statement (Persistent Process Caching in IRIS Interoperability)**:
     - In InterSystems IRIS Interoperability productions, Business Operations (BOs), Business Processes (BPs), and Business Services (BSs) are managed as dedicated background jobs (`Ens.Job`).
     - When a developer or AI agent edits and compiles a Business Operation class, IRIS keeps the worker job alive in memory. The running job retains the old cached routine/class in its memory segment, continuing to execute obsolete logic until the host process is restarted.

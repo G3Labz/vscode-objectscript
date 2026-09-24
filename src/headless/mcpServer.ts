@@ -22,6 +22,13 @@ import {
   saveProjectManifest,
 } from "./projectManifest";
 import { importFile, compile, loadChanges } from "../commands/compile";
+import {
+  restartProductionHost,
+  updateProduction,
+  toggleConfigItem,
+  INFLIGHT_MESSAGE_QUEUE_WARNING,
+  ProductionOperationResult,
+} from "./production";
 
 export interface McpTool {
   name: string;
@@ -161,6 +168,38 @@ const MCP_TOOLS: McpTool[] = [
         },
       },
       required: ["project", "targetServer"],
+    },
+  },
+  {
+    name: "iris_restart_config_item",
+    description: "Safely restart an Interoperability Production host (Business Operation, Service, or Process) via Ens.Director. Note: Requires explicit confirmation of inflight message queue risk.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        itemName: {
+          type: "string",
+          description: "Name of the configuration item or host to restart (e.g. 'GSJ BO ConexaoMaterna SQL Operation')",
+        },
+        mode: {
+          type: "string",
+          enum: ["restartHost", "updateProduction", "toggle"],
+          default: "restartHost",
+          description: "Restart mode: 'restartHost' (preferred graceful restart), 'updateProduction' (reload whole production), or 'toggle' (disable + enable)",
+        },
+        confirmInflightRisk: {
+          type: "boolean",
+          description: "Explicit confirmation of inflight message queue risk. Must be set to true.",
+        },
+        namespace: {
+          type: "string",
+          description: "Target IRIS namespace. Defaults to active profile namespace.",
+        },
+        server: {
+          type: "string",
+          description: "Target IRIS server key from .iris-sync/servers.json.",
+        },
+      },
+      required: ["itemName", "confirmInflightRisk"],
     },
   },
 ];
@@ -509,6 +548,45 @@ export class IrisSyncMcpServer {
               text: `Successfully promoted project '${manifest.name}': deployed ${deployedCount} items to server '${targetServer}' (namespace [${deployConfig.namespace}]).`,
             },
           ],
+        };
+      }
+
+      case "iris_restart_config_item": {
+        const itemName = args.itemName;
+        if (!itemName && args.mode !== "updateProduction") {
+          return {
+            content: [{ type: "text", text: "Error: 'itemName' is required when mode is not 'updateProduction'." }],
+            isError: true,
+          };
+        }
+        if (!args.confirmInflightRisk) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Error: Hot-restarting an Interoperability host requires explicit confirmation of inflight message risk.\n${INFLIGHT_MESSAGE_QUEUE_WARNING}\nPlease re-invoke with confirmInflightRisk: true.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const ns = args.namespace ? args.namespace.toUpperCase() : this._config.namespace;
+        const api = new AtelierAPI(this._config.serverName);
+        const mode = args.mode || "restartHost";
+
+        let result: ProductionOperationResult;
+        if (mode === "updateProduction") {
+          result = await updateProduction(api, ns);
+        } else if (mode === "toggle") {
+          result = await toggleConfigItem(api, ns, itemName);
+        } else {
+          result = await restartProductionHost(api, ns, itemName);
+        }
+
+        return {
+          content: [{ type: "text", text: result.message }],
+          isError: !result.success,
         };
       }
 

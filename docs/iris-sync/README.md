@@ -39,6 +39,7 @@ The official extension only works inside a running VS Code window. That means:
 | **Daemon** | Background service with systemd/launchd generators |
 | **Streaming** | Real-time WebSocket compiler output (`--stream`) |
 | **Config** | Two-tier `.iris-sync/` config with `.vscode/settings.json` auto-fallback |
+| **Production** | Safe BO hot-restart via `Ens.Director.RestartHost` / `UpdateProduction` (`--confirm`) |
 | **Native Binary** | Zero-dependency Node SEA executable — no Node.js install needed |
 
 ---
@@ -201,6 +202,15 @@ iris-sync git-sync --from HEAD@{1} --to HEAD
 
 # Export structured diagnostics for a CI pipeline
 iris-sync build --all --format sarif --output report.sarif
+
+# Hot-restart an Interoperability Business Operation safely
+iris-sync production restart "GSJ BO ConexaoMaterna SQL Operation" --confirm
+
+# Reload running Interoperability production
+iris-sync production update --confirm
+
+# Compile a Business Operation and restart it in one command
+iris-sync compile src/MyApp/Operation.cls --restart-host "MyOperation" --confirm
 
 # Run as an MCP server for AI coding agents
 iris-sync mcp

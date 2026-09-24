@@ -66,6 +66,13 @@ import {
   formatConsoleReport,
 } from "./testRunner";
 import { runParityBot } from "./dev/upstream-bot";
+import {
+  restartProductionHost,
+  updateProduction,
+  setConfigItemEnabled,
+  toggleConfigItem,
+  INFLIGHT_MESSAGE_QUEUE_WARNING,
+} from "./production";
 
 // ---------------------------------------------------------------------------
 // Bootstrap Runtime Shim & Upstream Extension Context
@@ -323,6 +330,8 @@ program
   .option("--no-compile", "Upload documents without triggering compiler")
   .option("--format <format>", "Diagnostic reporting format: console | json | sarif (Milestone M3.2)", "console")
   .option("-o, --output-file <file>", "Save diagnostic report to specified file path")
+  .option("--restart-host <name>", "Safely restart named Interoperability host upon successful compilation (Milestone M4.5)")
+  .option("-c, --confirm", "Acknowledge inflight message queue risk for production host restart")
   .action(async (files: string[], cmdOptions: any) => {
     const isStructured = cmdOptions.format === "json" || cmdOptions.format === "sarif";
     if (isStructured && !cmdOptions.outputFile) {
@@ -376,6 +385,19 @@ program
 
     if (isStructured || cmdOptions.outputFile) {
       collector.emit(cmdOptions.format, cmdOptions.outputFile);
+    }
+
+    if (cmdOptions.restartHost && allSuccess && !collector.hasErrors()) {
+      if (!cmdOptions.confirm && !cmdOptions.force) {
+        console.warn(INFLIGHT_MESSAGE_QUEUE_WARNING);
+        logger.error("Hot-restart aborted: pass '--confirm' (or '-c') to acknowledge inflight message queue risk.");
+        process.exit(1);
+      }
+      const api = new AtelierAPI(config.serverName);
+      const restRes = await restartProductionHost(api, config.namespace, cmdOptions.restartHost);
+      if (!restRes.success) {
+        process.exit(1);
+      }
     }
 
     process.exit(allSuccess && !collector.hasErrors() ? 0 : 1);
@@ -1848,6 +1870,72 @@ program
     } else {
       logger.info(`Unknown dev subaction: ${subaction}. Supported: version, sync-upstream, parity-bot`);
     }
+  });
+
+// ---------------------------------------------------------------------------
+// Production Lifecycle & Safe BO Hot-Restart (Milestone M4.5)
+// ---------------------------------------------------------------------------
+
+program
+  .command("production [action] [target]")
+  .description("InterSystems IRIS Interoperability production host lifecycle and safe BO hot-restart")
+  .option("-c, --confirm", "Acknowledge inflight message queue risk and proceed without interactive prompt")
+  .option("-f, --force", "Alias for --confirm")
+  .option("--mode <mode>", "Action mode: restartHost (default), updateProduction, toggle", "restartHost")
+  .option("--delay <ms>", "Delay in milliseconds between disable and enable when cycling (default: 1000)", "1000")
+  .action(async (action?: string, target?: string, cmdOptions?: any) => {
+    const globalOpts = program.opts();
+    const config = bootstrapEnvironment({
+      profile: globalOpts.profile,
+      server: globalOpts.server,
+      namespace: globalOpts.namespace,
+      host: globalOpts.host,
+      port: globalOpts.port,
+      user: globalOpts.user,
+      password: globalOpts.password,
+      insecure: globalOpts.insecure,
+    });
+
+    const hasConfirm = cmdOptions.confirm || cmdOptions.force;
+    if (!hasConfirm) {
+      console.warn(INFLIGHT_MESSAGE_QUEUE_WARNING);
+      logger.error("Operation halted: explicit confirmation required. Please re-run with '--confirm' (or '-c').");
+      process.exit(1);
+    }
+
+    const api = new AtelierAPI(config.serverName);
+    const subAction = (action || "restart").toLowerCase();
+    const itemName = target || (subAction !== "update" && subAction !== "reload" ? action : undefined);
+
+    if (subAction === "update" || subAction === "reload" || cmdOptions.mode === "updateProduction") {
+      const res = await updateProduction(api, config.namespace);
+      process.exit(res.success ? 0 : 1);
+    }
+
+    if (!itemName) {
+      logger.error("Target host or config item name is required (e.g. 'iris-sync production restart <HostName>').");
+      process.exit(1);
+    }
+
+    if (subAction === "toggle" || cmdOptions.mode === "toggle") {
+      const delay = parseInt(cmdOptions.delay, 10) || 1000;
+      const res = await toggleConfigItem(api, config.namespace, itemName, delay);
+      process.exit(res.success ? 0 : 1);
+    }
+
+    if (subAction === "enable") {
+      const res = await setConfigItemEnabled(api, config.namespace, itemName, true);
+      process.exit(res.success ? 0 : 1);
+    }
+
+    if (subAction === "disable") {
+      const res = await setConfigItemEnabled(api, config.namespace, itemName, false);
+      process.exit(res.success ? 0 : 1);
+    }
+
+    // Default: restartHost
+    const res = await restartProductionHost(api, config.namespace, itemName);
+    process.exit(res.success ? 0 : 1);
   });
 
 // ---------------------------------------------------------------------------

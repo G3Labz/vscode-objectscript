@@ -28,6 +28,7 @@ import {
 } from "../src/headless/testRunner";
 import { getIrisSyncVersions } from "../src/headless/version";
 import { scanAstParity, checkUpstreamStatus, runParityBot } from "../src/headless/dev/upstream-bot";
+import { INFLIGHT_MESSAGE_QUEUE_WARNING } from "../src/headless/production";
 
 const {
   Uri,
@@ -960,6 +961,92 @@ async function runTests() {
     assert.ok(helpOut.includes("--pr"), "Missing --pr option");
     assert.ok(helpOut.includes("--issue"), "Missing --issue option");
     assert.ok(helpOut.includes("--dry-run"), "Missing --dry-run option");
+  });
+
+  // -------------------------------------------------------------------------
+  // Group 17: Interoperability Production Lifecycle & Safe BO Hot-Restart (Milestone M4.5)
+  // -------------------------------------------------------------------------
+  console.log("\nSuite 17: Interoperability Production Lifecycle & Safe BO Hot-Restart (Milestone M4.5)");
+
+  await it("INFLIGHT_MESSAGE_QUEUE_WARNING details transaction and queue stalling risk", () => {
+    assert.ok(INFLIGHT_MESSAGE_QUEUE_WARNING.includes("CAUTION"));
+    assert.ok(INFLIGHT_MESSAGE_QUEUE_WARNING.includes("Inflight Message Queue"));
+    assert.ok(INFLIGHT_MESSAGE_QUEUE_WARNING.includes("Ens.Job"));
+  });
+
+  await it("iris-sync production --help lists confirmation flags, modes, and cycling delay", () => {
+    const { compositeVersion } = getIrisSyncVersions();
+    const cliPath = path.resolve(__dirname, `../dist/cli/iris-sync-${compositeVersion}.js`);
+    const helpOut = execSync(`node "${cliPath}" production --help`).toString("utf8");
+    assert.ok(helpOut.includes("--confirm"), "Missing --confirm option");
+    assert.ok(helpOut.includes("--force"), "Missing --force option");
+    assert.ok(helpOut.includes("--mode"), "Missing --mode option");
+    assert.ok(helpOut.includes("--delay"), "Missing --delay option");
+  });
+
+  await it("iris-sync compile --help exposes --restart-host and --confirm options", () => {
+    const { compositeVersion } = getIrisSyncVersions();
+    const cliPath = path.resolve(__dirname, `../dist/cli/iris-sync-${compositeVersion}.js`);
+    const helpOut = execSync(`node "${cliPath}" compile --help`).toString("utf8");
+    assert.ok(helpOut.includes("--restart-host"), "Missing --restart-host option");
+    assert.ok(helpOut.includes("--confirm"), "Missing --confirm option");
+  });
+
+  await it("iris-sync production restart without --confirm aborts with caution warning and non-zero exit code", () => {
+    const { compositeVersion } = getIrisSyncVersions();
+    const cliPath = path.resolve(__dirname, `../dist/cli/iris-sync-${compositeVersion}.js`);
+    let threw = false;
+    try {
+      execSync(`node "${cliPath}" production restart "MyTestBO"`, { stdio: "pipe" });
+    } catch (err: any) {
+      threw = true;
+      const combined = (err.stdout?.toString("utf8") || "") + (err.stderr?.toString("utf8") || "");
+      assert.ok(combined.includes("CAUTION") || combined.includes("Inflight Message Queue"), "Expected caution warning");
+      assert.ok(combined.includes("explicit confirmation required"), "Expected confirmation required error");
+    }
+    assert.ok(threw, "Execution without --confirm should fail with non-zero exit code");
+  });
+
+  await it("Model Context Protocol (MCP) Server exposes iris_restart_config_item tool with confirmation requirement", async () => {
+    const { spawn } = await import("child_process");
+    const { compositeVersion } = getIrisSyncVersions();
+    const cliPath = path.resolve(__dirname, `../dist/cli/iris-sync-${compositeVersion}.js`);
+    const proc = spawn("node", [cliPath, "mcp"], { stdio: ["pipe", "pipe", "pipe"] });
+
+    return new Promise<void>((resolve, reject) => {
+      let output = "";
+      const timer = setTimeout(() => {
+        proc.kill();
+        reject(new Error("MCP test timed out"));
+      }, 5000);
+
+      proc.stdout.on("data", (chunk: Buffer) => {
+        output += chunk.toString("utf8");
+        if (output.includes("iris_restart_config_item") && output.includes("confirmInflightRisk")) {
+          clearTimeout(timer);
+          proc.kill();
+          resolve();
+        }
+      });
+
+      const initMsg = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test", version: "1.0" } },
+      });
+      proc.stdin.write(`Content-Length: ${Buffer.byteLength(initMsg)}\r\n\r\n${initMsg}`);
+
+      setTimeout(() => {
+        const toolsMsg = JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: {},
+        });
+        proc.stdin.write(`Content-Length: ${Buffer.byteLength(toolsMsg)}\r\n\r\n${toolsMsg}`);
+      }, 100);
+    });
   });
 
   console.log("\n============================================================");
