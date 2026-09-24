@@ -70,7 +70,7 @@
 ---
 
 ### Phase 4: Enterprise CI/CD & Auto-Sync (Current Phase)
-- [ ] **M4.1: Official CI/CD GitHub Actions & GitLab CI Templates (`ghcr.io/g3labz/iris-sync`)**
+- [x] **M4.1: Official CI/CD GitHub Actions & GitLab CI Templates (`ghcr.io/g3labz/iris-sync`)**
 - [ ] **M4.2: Automated Upstream Parity Bot (weekly sync & PR creation)**
 - [ ] **M4.3: Secure Credential Vault Bridge (HashiCorp Vault, AWS/GCP/Azure Secret Managers)**
 - [ ] **M4.4: Public Package Registry Publishing (`@g3labz/iris-sync` on npm)**
@@ -325,7 +325,7 @@ Timeline Overview:
 
 ### 4.3 Phase 4: Enterprise CI/CD & Automated Upstream Tracking (Long-Term)
 
-- [ ] **M4.1: Official CI/CD GitHub Actions & GitLab CI Templates**
+- [x] **M4.1: Official CI/CD GitHub Actions & GitLab CI Templates**
   - Release pre-built GitHub Actions supporting workspace and project-scoped promotion:
     ```yaml
     - uses: g3labz/iris-sync-action@v1

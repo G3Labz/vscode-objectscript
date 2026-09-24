@@ -1,0 +1,175 @@
+name: "iris-sync ObjectScript CI/CD Action"
+description: "Compile, test, watch, and deploy InterSystems ObjectScript in GitHub Actions CI/CD workflows"
+author: "G3Labz"
+
+branding:
+  icon: "cpu"
+  color: "blue"
+
+inputs:
+  action:
+    description: "Action to execute: 'build' (compile workspace), 'compile' (single file), 'test' (run %UnitTest), 'project-deploy', 'project-export'"
+    required: false
+    default: "build"
+  file:
+    description: "Relative file path to compile (required when action is 'compile', e.g. 'src/MyApp/Service.cls')"
+    required: false
+  project:
+    description: "Studio Project manifest name (for 'project-deploy' or 'project-export')"
+    required: false
+  server:
+    description: "Target server identifier defined in .iris-sync/servers.json"
+    required: false
+  host:
+    description: "Target InterSystems IRIS host address"
+    required: false
+    default: "127.0.0.1"
+  port:
+    description: "Target InterSystems IRIS Atelier web port"
+    required: false
+    default: "52773"
+  namespace:
+    description: "Target InterSystems IRIS namespace"
+    required: false
+    default: "USER"
+  username:
+    description: "InterSystems IRIS username"
+    required: false
+    default: "_SYSTEM"
+  password:
+    description: "InterSystems IRIS user password"
+    required: true
+  scheme:
+    description: "Protocol scheme: http or https"
+    required: false
+    default: "http"
+  flags:
+    description: "Compiler flags (e.g. cuk, cukd)"
+    required: false
+    default: "cuk"
+  format:
+    description: "Output format: text, json, sarif, junit, tap"
+    required: false
+  output:
+    description: "Path to write diagnostic or test report output"
+    required: false
+  test-package:
+    description: "Target %UnitTest package or test class (e.g. 'User.Tests')"
+    required: false
+  extra-args:
+    description: "Additional raw CLI arguments passed directly to iris-sync"
+    required: false
+
+outputs:
+  status:
+    description: "Resulting exit status of the iris-sync operation"
+    value: ${{ steps.run-iris-sync.outputs.status }}
+  report-path:
+    description: "Path to generated report file if output was specified"
+    value: ${{ inputs.output }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Node.js runtime
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Resolve iris-sync CLI runner
+      id: resolve-cli
+      shell: bash
+      run: |
+        ACTION_DIR="${{ github.action_path }}"
+        CLI_BIN="$ACTION_DIR/dist/cli/iris-sync.js"
+        
+        if [ ! -f "$CLI_BIN" ]; then
+          echo "::group::Building iris-sync from action repository"
+          cd "$ACTION_DIR"
+          npm ci --ignore-scripts
+          npm run build:cli
+          cd "$GITHUB_WORKSPACE"
+          echo "::endgroup::"
+        fi
+        
+        echo "cli_bin=$CLI_BIN" >> $GITHUB_OUTPUT
+
+    - name: Execute iris-sync
+      id: run-iris-sync
+      shell: bash
+      env:
+        IRIS_HOST: ${{ inputs.host }}
+        IRIS_PORT: ${{ inputs.port }}
+        IRIS_NAMESPACE: ${{ inputs.namespace }}
+        IRIS_USERNAME: ${{ inputs.username }}
+        IRIS_PASSWORD: ${{ inputs.password }}
+        IRIS_SCHEME: ${{ inputs.scheme }}
+      run: |
+        CLI="node ${{ steps.resolve-cli.outputs.cli_bin }}"
+        ACTION="${{ inputs.action }}"
+        ARGS=""
+
+        if [ -n "${{ inputs.server }}" ]; then
+          ARGS="$ARGS --server ${{ inputs.server }}"
+        fi
+
+        if [ -n "${{ inputs.flags }}" ]; then
+          ARGS="$ARGS --flags ${{ inputs.flags }}"
+        fi
+
+        if [ -n "${{ inputs.format }}" ]; then
+          ARGS="$ARGS --format ${{ inputs.format }}"
+        fi
+
+        if [ -n "${{ inputs.output }}" ]; then
+          ARGS="$ARGS --output ${{ inputs.output }}"
+        fi
+
+        if [ -n "${{ inputs.extra-args }}" ]; then
+          ARGS="$ARGS ${{ inputs.extra-args }}"
+        fi
+
+        case "$ACTION" in
+          "build")
+            echo "::notice::Executing iris-sync build --all"
+            $CLI build --all $ARGS
+            ;;
+          "compile")
+            if [ -z "${{ inputs.file }}" ]; then
+              echo "::error::'file' input is required when action is 'compile'"
+              exit 1
+            fi
+            echo "::notice::Executing iris-sync compile ${{ inputs.file }}"
+            $CLI compile "${{ inputs.file }}" $ARGS
+            ;;
+          "test")
+            TEST_ARGS=""
+            if [ -n "${{ inputs.test-package }}" ]; then
+              TEST_ARGS="--package ${{ inputs.test-package }}"
+            fi
+            echo "::notice::Executing iris-sync test $TEST_ARGS"
+            $CLI test $TEST_ARGS $ARGS
+            ;;
+          "project-deploy")
+            if [ -z "${{ inputs.project }}" ]; then
+              echo "::error::'project' input is required when action is 'project-deploy'"
+              exit 1
+            fi
+            echo "::notice::Executing iris-sync project deploy ${{ inputs.project }}"
+            $CLI project deploy "${{ inputs.project }}" $ARGS
+            ;;
+          "project-export")
+            if [ -z "${{ inputs.project }}" ]; then
+              echo "::error::'project' input is required when action is 'project-export'"
+              exit 1
+            fi
+            echo "::notice::Executing iris-sync project export ${{ inputs.project }}"
+            $CLI project export "${{ inputs.project }}" $ARGS
+            ;;
+          *)
+            echo "::notice::Executing raw iris-sync command: $ACTION $ARGS"
+            $CLI $ACTION $ARGS
+            ;;
+        esac
+
+        echo "status=success" >> $GITHUB_OUTPUT

@@ -345,6 +345,7 @@ Resolution order (highest precedence first):
 
 ## Further Reading
 
+- **[CI/CD Integration Guide](ci-cd-guide.md)** — Guide for GitHub Actions, GitLab CI/CD, and Docker container automation.
 - **[Architectural Blueprint & Implementation Guide](headless-iris-sync-compiler-guide.md)** — Deep dive into the Atelier protocol, Pattern A shim architecture, and full configuration reference.
 - **[Product Roadmap](roadmap.md)** — Phase status, completed milestones, and upcoming features.
 - **[Empirical Findings Log](EMPIRICISM.md)** — Protocol discoveries, concurrency semantics, and architectural decision records.

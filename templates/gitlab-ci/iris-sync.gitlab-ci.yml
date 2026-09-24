@@ -1,0 +1,79 @@
+# ==============================================================================
+# iris-sync — GitLab CI/CD Pipeline Template
+# https://github.com/G3Labz/vscode-objectscript
+# ==============================================================================
+# Usage:
+# Include this template in your project's .gitlab-ci.yml:
+#
+# include:
+#   - remote: 'https://raw.githubusercontent.com/G3Labz/vscode-objectscript/master/templates/gitlab-ci/iris-sync.gitlab-ci.yml'
+#
+# Required CI/CD Variables (configured in GitLab Settings -> CI/CD -> Variables):
+#   - IRIS_HOST: InterSystems IRIS host (e.g. 192.168.1.100 or iris.internal)
+#   - IRIS_PORT: Atelier REST port (e.g. 52773)
+#   - IRIS_NAMESPACE: Target namespace (e.g. USER)
+#   - IRIS_USERNAME: InterSystems IRIS username (e.g. _SYSTEM)
+#   - IRIS_PASSWORD: InterSystems IRIS password (masked / protected)
+# ==============================================================================
+
+.iris-sync-base:
+  image:
+    name: ghcr.io/g3labz/iris-sync:latest
+    entrypoint: [""]
+  variables:
+    IRIS_SCHEME: "http"
+    IRIS_FLAGS: "cuk"
+  before_script:
+    - iris-sync --version
+
+# --- Job: Compile entire workspace on merge requests and default branch ---
+iris-compile:
+  extends: .iris-sync-base
+  stage: build
+  script:
+    - echo "Compiling ObjectScript workspace..."
+    - iris-sync build --all --flags "$IRIS_FLAGS" --format sarif --output gl-code-quality-report.sarif
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.sarif
+    paths:
+      - gl-code-quality-report.sarif
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# --- Job: Run %UnitTest test suites with JUnit report integration ---
+iris-test:
+  extends: .iris-sync-base
+  stage: test
+  variables:
+    TEST_PACKAGE: "User.Tests"
+  script:
+    - echo "Running InterSystems %UnitTest suite: $TEST_PACKAGE..."
+    - iris-sync test --package "$TEST_PACKAGE" --format junit --output junit-results.xml
+  artifacts:
+    when: always
+    reports:
+      junit: junit-results.xml
+    paths:
+      - junit-results.xml
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# --- Job: Deploy Studio Project to Staging/Production environment ---
+iris-deploy:
+  extends: .iris-sync-base
+  stage: deploy
+  variables:
+    STUDIO_PROJECT: "MainService"
+  script:
+    - echo "Deploying Studio Project: $STUDIO_PROJECT..."
+    - iris-sync project deploy "$STUDIO_PROJECT" --compile --flags "$IRIS_FLAGS"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+  environment:
+    name: production
